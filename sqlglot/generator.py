@@ -32,6 +32,8 @@ def unsupported_args(
     """
     Decorator that can be used to mark certain args of an `Expression` subclass as unsupported.
     It expects a sequence of argument names or pairs of the form (argument_name, diagnostic_msg).
+    `Expression` サブクラスの特定の引数をサポートされていないものとしてマークするために使用できるデコレータです。
+    引数名のシーケンス、または (argument_name, diagnostic_msg) 形式のペアを想定しています。
     """
     diagnostic_by_arg: t.Dict[str, t.Optional[str]] = {}
     for arg in args:
@@ -74,39 +76,54 @@ class _Generator(type):
 class Generator(metaclass=_Generator):
     """
     Generator converts a given syntax tree to the corresponding SQL string.
+    ジェネレーターは、指定された構文ツリーを対応する SQL 文字列に変換します。
 
     Args:
         pretty: Whether to format the produced SQL string.
+            生成された SQL 文字列をフォーマットするかどうか。
             Default: False.
         identify: Determines when an identifier should be quoted. Possible values are:
+            識別子を引用符で囲むタイミングを決定します。可能な値は次のとおりです。
             False (default): Never quote, except in cases where it's mandatory by the dialect.
             True or 'always': Always quote.
             'safe': Only quote identifiers that are case insensitive.
         normalize: Whether to normalize identifiers to lowercase.
+            識別子を小文字に正規化するかどうか。
             Default: False.
         pad: The pad size in a formatted string. For example, this affects the indentation of
             a projection in a query, relative to its nesting level.
+            フォーマットされた文字列のパディングサイズ。例えば、クエリ内の投影のインデントは、
+            そのネストレベルに応じて変化します。
             Default: 2.
         indent: The indentation size in a formatted string. For example, this affects the
             indentation of subqueries and filters under a `WHERE` clause.
             Default: 2.
         normalize_functions: How to normalize function names. Possible values are:
+            関数名を正規化する方法。可能な値は次のとおりです。
             "upper" or True (default): Convert names to uppercase.
             "lower": Convert names to lowercase.
             False: Disables function name normalization.
         unsupported_level: Determines the generator's behavior when it encounters unsupported expressions.
+            サポートされていない式に遭遇したときのジェネレーターの動作を決定します。
             Default ErrorLevel.WARN.
         max_unsupported: Maximum number of unsupported messages to include in a raised UnsupportedError.
             This is only relevant if unsupported_level is ErrorLevel.RAISE.
+            発生した UnsupportedError に含めるサポートされていないメッセージの最大数。
+            これは、unsupported_level が ErrorLevel.RAISE の場合にのみ関係します。
             Default: 3
         leading_comma: Whether the comma is leading or trailing in select expressions.
             This is only relevant when generating in pretty mode.
+            選択式において、コンマが先頭か末尾かを指定します。
+            これは、pretty モードで生成する場合にのみ関係します。
             Default: False
         max_text_width: The max number of characters in a segment before creating new lines in pretty mode.
             The default is on the smaller end because the length only represents a segment and not the true
             line length.
+            pretty モードで新しい行を作成する前のセグメント内の最大文字数。
+            長さはセグメントのみを表し、実際の行の長さではないため、デフォルトは小さい方になります。
             Default: 80
         comments: Whether to preserve comments in the output SQL code.
+            出力 SQL コードにコメントを保持するかどうか。
             Default: True
     """
 
@@ -238,79 +255,106 @@ class Generator(metaclass=_Generator):
     # Whether null ordering is supported in order by
     # True: Full Support, None: No support, False: No support for certain cases
     # such as window specifications, aggregate functions etc
+    # order by で null 順序付けがサポートされているかどうか
+    # True: 完全サポート、None: サポートなし、
+    # False: ウィンドウ指定、集計関数など、特定のケースではサポートなし
     NULL_ORDERING_SUPPORTED: t.Optional[bool] = True
 
     # Whether ignore nulls is inside the agg or outside.
+    # null を無視するかどうかを agg の内側で指定します。
     # FIRST(x IGNORE NULLS) OVER vs FIRST (x) IGNORE NULLS OVER
     IGNORE_NULLS_IN_FUNC = False
 
     # Whether locking reads (i.e. SELECT ... FOR UPDATE/SHARE) are supported
+    # ロック読み取り（SELECT ... FOR UPDATE/SHAREなど）がサポートされているかどうか
     LOCKING_READS_SUPPORTED = False
 
     # Whether the EXCEPT and INTERSECT operations can return duplicates
+    # EXCEPT および INTERSECT 演算が重複を返すかどうか
     EXCEPT_INTERSECT_SUPPORT_ALL_CLAUSE = True
 
     # Wrap derived values in parens, usually standard but spark doesn't support it
+    # 導出された値を括弧で囲みます。通常は標準ですが、Spark ではサポートされていません。
     WRAP_DERIVED_VALUES = True
 
     # Whether create function uses an AS before the RETURN
+    # 作成関数がRETURNの前にASを使用するかどうか
     CREATE_FUNCTION_RETURN_AS = True
 
     # Whether MERGE ... WHEN MATCHED BY SOURCE is allowed
+    # MERGE ... WHEN MATCHED BY SOURCE が許可されるかどうか
     MATCHED_BY_SOURCE = True
 
     # Whether the INTERVAL expression works only with values like '1 day'
+    # INTERVAL式が'1 day'のような値でのみ機能するかどうか
     SINGLE_STRING_INTERVAL = False
 
     # Whether the plural form of date parts like day (i.e. "days") is supported in INTERVALs
+    # INTERVALで日付部分の複数形（例えば「days」）がサポートされているかどうか
     INTERVAL_ALLOWS_PLURAL_FORM = True
 
     # Whether limit and fetch are supported (possible values: "ALL", "LIMIT", "FETCH")
+    # 制限とフェッチがサポートされているかどうか（可能な値: "ALL"、"LIMIT"、"FETCH")
     LIMIT_FETCH = "ALL"
 
     # Whether limit and fetch allows expresions or just limits
+    # limitとfetchが式を許可するか、リテラル？のみを許可するか（typo？）
     LIMIT_ONLY_LITERALS = False
 
     # Whether a table is allowed to be renamed with a db
+    # テーブルの名前をdbで変更できるかどうか
     RENAME_TABLE_WITH_DB = True
 
     # The separator for grouping sets and rollups
+    # セットとロールアップをグループ化するためのセパレーター
     GROUPINGS_SEP = ","
 
     # The string used for creating an index on a table
+    # テーブルにインデックスを作成するために使用される文字列
     INDEX_ON = "ON"
 
     # Whether join hints should be generated
+    # 結合ヒントを生成するかどうか
     JOIN_HINTS = True
 
     # Whether table hints should be generated
+    # テーブルヒントを生成するかどうか
     TABLE_HINTS = True
 
     # Whether query hints should be generated
+    # クエリヒントを生成するかどうか
     QUERY_HINTS = True
 
     # What kind of separator to use for query hints
+    # クエリヒントに使用する区切り文字の種類
     QUERY_HINT_SEP = ", "
 
     # Whether comparing against booleans (e.g. x IS TRUE) is supported
+    # ブール値との比較（例：x IS TRUE）がサポートされているかどうか
     IS_BOOL_ALLOWED = True
 
     # Whether to include the "SET" keyword in the "INSERT ... ON DUPLICATE KEY UPDATE" statement
+    # 「INSERT ... ON DUPLICATE KEY UPDATE」ステートメントに「SET」キーワードを含めるかどうか
     DUPLICATE_KEY_UPDATE_WITH_SET = True
 
     # Whether to generate the limit as TOP <value> instead of LIMIT <value>
+    # 制限を LIMIT <値> ではなく TOP <値> として生成するかどうか
     LIMIT_IS_TOP = False
 
     # Whether to generate INSERT INTO ... RETURNING or INSERT INTO RETURNING ...
+    # INSERT INTO ... RETURNING を生成するか、INSERT INTO RETURNING ... を生成するか
     RETURNING_END = True
 
     # Whether to generate an unquoted value for EXTRACT's date part argument
+    # EXTRACTの日付部分引数に引用符で囲まれていない値を生成するかどうか
     EXTRACT_ALLOWS_QUOTES = True
 
     # Whether TIMETZ / TIMESTAMPTZ will be generated using the "WITH TIME ZONE" syntax
+    # TIMETZ / TIMESTAMPTZ が「WITH TIME ZONE」構文を使用して生成されるかどうか
     TZ_TO_WITH_TIME_ZONE = False
 
     # Whether the NVL2 function is supported
+    # NVL2機能がサポートされているかどうか
     NVL2_SUPPORTED = True
 
     # https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax
@@ -319,194 +363,260 @@ class Generator(metaclass=_Generator):
     # Whether VALUES statements can be used as derived tables.
     # MySQL 5 and Redshift do not allow this, so when False, it will convert
     # SELECT * VALUES into SELECT UNION
+    # VALUES ステートメントを派生テーブルとして使用できるかどうか。
+    # MySQL 5 および Redshift ではこれが許可されていないため、False の場合は 
+    # SELECT * VALUES が SELECT UNION に変換されます。
     VALUES_AS_TABLE = True
 
     # Whether the word COLUMN is included when adding a column with ALTER TABLE
+    # ALTER TABLEで列を追加するときにCOLUMNという単語が含まれているかどうか
     ALTER_TABLE_INCLUDE_COLUMN_KEYWORD = True
 
     # UNNEST WITH ORDINALITY (presto) instead of UNNEST WITH OFFSET (bigquery)
+    # UNNEST WITH OFFSET (bigquery) の代わりに UNNEST WITH ORDINALITY (presto) を使用する
     UNNEST_WITH_ORDINALITY = True
 
     # Whether FILTER (WHERE cond) can be used for conditional aggregation
+    # FILTER (WHERE cond) を条件付き集計に使用できるかどうか
     AGGREGATE_FILTER_SUPPORTED = True
 
     # Whether JOIN sides (LEFT, RIGHT) are supported in conjunction with SEMI/ANTI join kinds
+    # JOIN側（LEFT、RIGHT）がSEMI/ANTI結合種類と組み合わせてサポートされているかどうか
     SEMI_ANTI_JOIN_WITH_SIDE = True
 
     # Whether to include the type of a computed column in the CREATE DDL
+    # CREATE DDLに計算列の型を含めるかどうか
     COMPUTED_COLUMN_WITH_TYPE = True
 
     # Whether CREATE TABLE .. COPY .. is supported. False means we'll generate CLONE instead of COPY
+    # CREATE TABLE .. COPY .. がサポートされているかどうか。False の場合、COPY ではなく CLONE が生成されます。
     SUPPORTS_TABLE_COPY = True
 
     # Whether parentheses are required around the table sample's expression
+    # 表サンプルの式の周囲に括弧が必要かどうか
     TABLESAMPLE_REQUIRES_PARENS = True
 
     # Whether a table sample clause's size needs to be followed by the ROWS keyword
+    # テーブルサンプル句のサイズの後にROWSキーワードを続ける必要があるかどうか
     TABLESAMPLE_SIZE_IS_ROWS = True
 
     # The keyword(s) to use when generating a sample clause
+    # サンプル句を生成するときに使用するキーワード
     TABLESAMPLE_KEYWORDS = "TABLESAMPLE"
 
     # Whether the TABLESAMPLE clause supports a method name, like BERNOULLI
+    # TABLESAMPLE句がBERNOULLIのようなメソッド名をサポートしているかどうか
     TABLESAMPLE_WITH_METHOD = True
 
     # The keyword to use when specifying the seed of a sample clause
+    # サンプル句のシードを指定するときに使用するキーワード
     TABLESAMPLE_SEED_KEYWORD = "SEED"
 
     # Whether COLLATE is a function instead of a binary operator
+    # COLLATEが二項演算子ではなく関数であるかどうか
     COLLATE_IS_FUNC = False
 
     # Whether data types support additional specifiers like e.g. CHAR or BYTE (oracle)
+    # データ型がCHARやBYTE（Oracle）などの追加指定子をサポートしているかどうか
     DATA_TYPE_SPECIFIERS_ALLOWED = False
 
     # Whether conditions require booleans WHERE x = 0 vs WHERE x
+    # 条件にブール値 WHERE x = 0 が必要か WHERE x が必要か
     ENSURE_BOOLS = False
 
     # Whether the "RECURSIVE" keyword is required when defining recursive CTEs
+    # 再帰CTEを定義するときに「RECURSIVE」キーワードが必要かどうか
     CTE_RECURSIVE_KEYWORD_REQUIRED = True
 
     # Whether CONCAT requires >1 arguments
+    # CONCAT に 1 個を超える引数が必要かどうか
     SUPPORTS_SINGLE_ARG_CONCAT = True
 
     # Whether LAST_DAY function supports a date part argument
+    # LAST_DAY関数が日付部分引数をサポートするかどうか
     LAST_DAY_SUPPORTS_DATE_PART = True
 
     # Whether named columns are allowed in table aliases
+    # 名前付き列がテーブルエイリアスで許可されるかどうか
     SUPPORTS_TABLE_ALIAS_COLUMNS = True
 
     # Whether UNPIVOT aliases are Identifiers (False means they're Literals)
+    # UNPIVOT エイリアスが識別子であるかどうか (False の場合はリテラル)
     UNPIVOT_ALIASES_ARE_IDENTIFIERS = True
 
     # What delimiter to use for separating JSON key/value pairs
+    # JSONのキー/値のペアを区切るために使用する区切り文字
     JSON_KEY_VALUE_PAIR_SEP = ":"
 
     # INSERT OVERWRITE TABLE x override
     INSERT_OVERWRITE = " OVERWRITE TABLE"
 
     # Whether the SELECT .. INTO syntax is used instead of CTAS
+    # CTASの代わりにSELECT .. INTO構文が使用されるかどうか
     SUPPORTS_SELECT_INTO = False
 
     # Whether UNLOGGED tables can be created
+    # UNLOGGEDテーブルを作成できるかどうか
     SUPPORTS_UNLOGGED_TABLES = False
 
     # Whether the CREATE TABLE LIKE statement is supported
+    # CREATE TABLE LIKE文がサポートされているかどうか
     SUPPORTS_CREATE_TABLE_LIKE = True
 
     # Whether the LikeProperty needs to be specified inside of the schema clause
+    # LikePropertyをスキーマ句内で指定する必要があるかどうか
     LIKE_PROPERTY_INSIDE_SCHEMA = False
 
     # Whether DISTINCT can be followed by multiple args in an AggFunc. If not, it will be
     # transpiled into a series of CASE-WHEN-ELSE, ultimately using a tuple conseisting of the args
+    # AggFuncにおいて、DISTINCTに複数の引数が続くことができるかどうか。そうでない場合は、
+    # CASE-WHEN-ELSEの一連の式に変換され、最終的には引数を集合化したタプルが使用されます。
     MULTI_ARG_DISTINCT = True
 
     # Whether the JSON extraction operators expect a value of type JSON
+    # JSON抽出演算子がJSON型の値を期待するかどうか
     JSON_TYPE_REQUIRED_FOR_EXTRACTION = False
 
     # Whether bracketed keys like ["foo"] are supported in JSON paths
+    # ["foo"]のような括弧で囲まれたキーがJSONパスでサポートされているかどうか
     JSON_PATH_BRACKETED_KEY_SUPPORTED = True
 
     # Whether to escape keys using single quotes in JSON paths
+    # JSON パスで一重引用符を使用してキーをエスケープするかどうか
     JSON_PATH_SINGLE_QUOTE_ESCAPE = False
 
     # The JSONPathPart expressions supported by this dialect
+    # この方言でサポートされているJSONPathPart式
     SUPPORTED_JSON_PATH_PARTS = ALL_JSON_PATH_PARTS.copy()
 
     # Whether any(f(x) for x in array) can be implemented by this dialect
+    # any(f(x) for x in array)がこの方言で実装できるかどうか
     CAN_IMPLEMENT_ARRAY_ANY = False
 
     # Whether the function TO_NUMBER is supported
+    # TO_NUMBER関数がサポートされているかどうか
     SUPPORTS_TO_NUMBER = True
 
     # Whether EXCLUDE in window specification is supported
+    # ウィンドウ指定の EXCLUDE がサポートされているかどうか
     SUPPORTS_WINDOW_EXCLUDE = False
 
     # Whether or not set op modifiers apply to the outer set op or select.
+    # set op 修飾子が外側の set op または select に適用されるかどうか。
     # SELECT * FROM x UNION SELECT * FROM y LIMIT 1
     # True means limit 1 happens after the set op, False means it it happens on y.
+    # True は、制限 1 が set op の後に発生することを意味し、False は、制限 1 が y で発生することを意味します。
     SET_OP_MODIFIERS = True
 
     # Whether parameters from COPY statement are wrapped in parentheses
+    # COPY文のパラメータが括弧で囲まれているかどうか
     COPY_PARAMS_ARE_WRAPPED = True
 
     # Whether values of params are set with "=" token or empty space
+    # パラメータの値が「=」トークンで設定されているか、空白で設定されているか
     COPY_PARAMS_EQ_REQUIRED = False
 
     # Whether COPY statement has INTO keyword
+    # COPY文にINTOキーワードがあるかどうか
     COPY_HAS_INTO_KEYWORD = True
 
     # Whether the conditional TRY(expression) function is supported
+    # 条件付きTRY(式)関数がサポートされているかどうか
     TRY_SUPPORTED = True
 
     # Whether the UESCAPE syntax in unicode strings is supported
+    # Unicode文字列のUESCAPE構文がサポートされているかどうか
     SUPPORTS_UESCAPE = True
 
     # Function used to replace escaped unicode codes in unicode strings
+    # Unicode文字列内のエスケープされたUnicodeコードを置き換えるために使用される関数
     UNICODE_SUBSTITUTE: t.Optional[t.Callable[[re.Match[str]], str]] = None
 
     # The keyword to use when generating a star projection with excluded columns
+    # 除外された列を含むスター投影を生成するときに使用するキーワード
     STAR_EXCEPT = "EXCEPT"
 
     # The HEX function name
     HEX_FUNC = "HEX"
 
     # The keywords to use when prefixing & separating WITH based properties
+    # WITHベースのプロパティの接頭辞と区切りに使用するキーワード
     WITH_PROPERTIES_PREFIX = "WITH"
 
     # Whether to quote the generated expression of exp.JsonPath
+    # exp.JsonPath の生成された式を引用符で囲むかどうか
     QUOTE_JSON_PATH = True
 
     # Whether the text pattern/fill (3rd) parameter of RPAD()/LPAD() is optional (defaults to space)
+    # RPAD()/LPAD() のテキストパターン/塗りつぶし（3番目の）パラメータがオプションかどうか（デフォルトはスペース）
     PAD_FILL_PATTERN_IS_REQUIRED = False
 
     # Whether a projection can explode into multiple rows, e.g. by unnesting an array.
+    # 配列のネストを解除するなどして、投影を複数の行に展開できるかどうか。
     SUPPORTS_EXPLODING_PROJECTIONS = True
 
     # Whether ARRAY_CONCAT can be generated with varlen args or if it should be reduced to 2-arg version
+    # ARRAY_CONCAT を varlen 引数で生成できるか、それとも 2 引数バージョンに縮小する必要があるか
     ARRAY_CONCAT_IS_VAR_LEN = True
 
     # Whether CONVERT_TIMEZONE() is supported; if not, it will be generated as exp.AtTimeZone
+    # CONVERT_TIMEZONE() がサポートされているかどうか。
+    # サポートされていない場合は、exp.AtTimeZone として生成されます。
     SUPPORTS_CONVERT_TIMEZONE = False
 
     # Whether MEDIAN(expr) is supported; if not, it will be generated as PERCENTILE_CONT(expr, 0.5)
+    # MEDIAN(expr) がサポートされているかどうか。
+    # サポートされていない場合は、PERCENTILE_CONT(expr, 0.5) として生成されます。
     SUPPORTS_MEDIAN = True
 
     # Whether UNIX_SECONDS(timestamp) is supported
+    # UNIX_SECONDS(タイムスタンプ)がサポートされているかどうか
     SUPPORTS_UNIX_SECONDS = False
 
     # Whether to wrap <props> in `AlterSet`, e.g., ALTER ... SET (<props>)
+    # <props> を `AlterSet` で囲むかどうか (例: ALTER ... SET (<props>))
     ALTER_SET_WRAPPED = False
 
     # Whether to normalize the date parts in EXTRACT(<date_part> FROM <expr>) into a common representation
     # For instance, to extract the day of week in ISO semantics, one can use ISODOW, DAYOFWEEKISO etc depending on the dialect.
     # TODO: The normalization should be done by default once we've tested it across all dialects.
+    # EXTRACT(<date_part> FROM <expr>) 内の日付部分を共通の表現に正規化するかどうか
+    # 例えば、ISO セマンティクスで曜日を抽出するには、方言に応じて ISODOW、DAYOFWEEKISO などを使用できます。
+    # TODO: すべての方言でテストが完了したら、正規化はデフォルトで実行されるようにする必要があります。
     NORMALIZE_EXTRACT_DATE_PARTS = False
 
     # The name to generate for the JSONPath expression. If `None`, only `this` will be generated
+    # JSONPath式に生成する名前。`None`の場合、`this`のみが生成されます。
     PARSE_JSON_NAME: t.Optional[str] = "PARSE_JSON"
 
     # The function name of the exp.ArraySize expression
     ARRAY_SIZE_NAME: str = "ARRAY_LENGTH"
 
     # The syntax to use when altering the type of a column
+    # 列の型を変更するときに使用する構文
     ALTER_SET_TYPE = "SET DATA TYPE"
 
     # Whether exp.ArraySize should generate the dimension arg too (valid for Postgres & DuckDB)
+    # exp.ArraySize が次元引数も生成するかどうか (Postgres および DuckDB に有効)
     # None -> Doesn't support it at all
     # False (DuckDB) -> Has backwards-compatible support, but preferably generated without
     # True (Postgres) -> Explicitly requires it
     ARRAY_SIZE_DIM_REQUIRED: t.Optional[bool] = None
 
     # Whether a multi-argument DECODE(...) function is supported. If not, a CASE expression is generated
+    # 複数引数のDECODE(...)関数がサポートされているかどうか。サポートされていない場合は、CASE式が生成されます。
     SUPPORTS_DECODE_CASE = True
 
     # Whether SYMMETRIC and ASYMMETRIC flags are supported with BETWEEN expression
+    # BETWEEN式でSYMMETRICおよびASYMMETRICフラグがサポートされているかどうか
     SUPPORTS_BETWEEN_FLAGS = False
 
     # Whether LIKE and ILIKE support quantifiers such as LIKE ANY/ALL/SOME
+    # LIKE と ILIKE が LIKE ANY/ALL/SOME などの量指定子をサポートするかどうか
     SUPPORTS_LIKE_QUANTIFIERS = True
 
     # Prefix which is appended to exp.Table expressions in MATCH AGAINST
+    # MATCH AGAINSTのexp.Table式に追加される接頭辞
     MATCH_AGAINST_TABLE_PREFIX: t.Optional[str] = None
 
     TYPE_MAPPING = {
@@ -659,9 +769,11 @@ class Generator(metaclass=_Generator):
     }
 
     # Keywords that can't be used as unquoted identifier names
+    # 引用符なしの識別子名として使用できないキーワード
     RESERVED_KEYWORDS: t.Set[str] = set()
 
     # Expressions whose comments are separated from them for better formatting
+    # より適切な書式設定のためにコメントが分離された式
     WITH_SEPARATED_COMMENTS: t.Tuple[t.Type[exp.Expression], ...] = (
         exp.Command,
         exp.Create,
@@ -683,12 +795,14 @@ class Generator(metaclass=_Generator):
     )
 
     # Expressions that should not have their comments generated in maybe_comment
+    # maybe_comment でコメントを生成すべきでない式
     EXCLUDE_COMMENTS: t.Tuple[t.Type[exp.Expression], ...] = (
         exp.Binary,
         exp.SetOperation,
     )
 
     # Expressions that can remain unwrapped when appearing in the context of an INTERVAL
+    # INTERVALのコンテキストで出現するときにラップされないまま残ることができる式
     UNWRAPPED_INTERVAL_VALUES: t.Tuple[t.Type[exp.Expression], ...] = (
         exp.Column,
         exp.Literal,
@@ -704,6 +818,7 @@ class Generator(metaclass=_Generator):
     }
 
     # Expressions that need to have all CTEs under them bubbled up to them
+    # すべての CTE をその下までバブルアップする必要がある式
     EXPRESSIONS_WITHOUT_NESTED_CTES: t.Set[t.Type[exp.Expression]] = set()
 
     RESPECT_IGNORE_NULLS_UNSUPPORTED_EXPRESSIONS: t.Tuple[t.Type[exp.Expression], ...] = ()
@@ -766,6 +881,7 @@ class Generator(metaclass=_Generator):
         self.dialect = Dialect.get_or_raise(dialect)
 
         # This is both a Dialect property and a Generator argument, so we prioritize the latter
+        # これはDialectプロパティとGenerator引数の両方であるため、後者を優先します。
         self.normalize_functions = (
             self.dialect.NORMALIZE_FUNCTIONS if normalize_functions is None else normalize_functions
         )
@@ -791,14 +907,17 @@ class Generator(metaclass=_Generator):
     def generate(self, expression: exp.Expression, copy: bool = True) -> str:
         """
         Generates the SQL string corresponding to the given syntax tree.
+        指定された構文ツリーに対応する SQL 文字列を生成します。
 
         Args:
-            expression: The syntax tree.
+            expression: The syntax tree. 構文ツリー。
             copy: Whether to copy the expression. The generator performs mutations so
                 it is safer to copy.
+                式をコピーするかどうか。ジェネレーターは変更を実行するため、コピーする方が安全です。
 
         Returns:
             The SQL string corresponding to `expression`.
+            `expression` に対応する SQL 文字列。
         """
         if copy:
             expression = expression.copy()
@@ -823,7 +942,8 @@ class Generator(metaclass=_Generator):
         return sql
 
     def preprocess(self, expression: exp.Expression) -> exp.Expression:
-        """Apply generic preprocessing transformations to a given expression."""
+        """Apply generic preprocessing transformations to a given expression.
+        指定された式に一般的な前処理変換を適用します。"""
         expression = self._move_ctes_to_top_level(expression)
 
         if self.ENSURE_BOOLS:
@@ -1366,15 +1486,21 @@ class Generator(metaclass=_Generator):
             # Integer representation will be returned if:
             # - The read dialect treats the hex value as integer literal but not the write
             # - The transpilation is not supported (write dialect hasn't set HEX_START or the param flag)
+            # 以下の場合、整数表現が返されます。
+            # - 読み取り方言は16進値を整数リテラルとして扱いますが、書き込み方言は扱いません。
+            # - トランスパイルがサポートされていません（書き込み方言でHEX_STARTまたはparamフラグが設定されていません）。
             return f"{int(this, 16)}"
 
         if not is_integer_type:
             # Read dialect treats the hex value as BINARY/BLOB
+            # 読み取り方言は16進値をBINARY/BLOBとして扱います
             if binary_function_repr:
                 # The write dialect supports the transpilation to its equivalent BINARY/BLOB
+                # 書き込み方言は、同等のBINARY/BLOBへの変換をサポートします。
                 return self.func(binary_function_repr, exp.Literal.string(this))
             if self.dialect.HEX_STRING_IS_INTEGER_TYPE:
                 # The write dialect does not support the transpilation, it'll treat the hex value as INTEGER
+                # 書き込み方言はトランスパイルをサポートしていないため、16進値はINTEGERとして扱われます。
                 self.unsupported("Unsupported transpilation from BINARY/BLOB hex string")
 
         return f"{self.dialect.HEX_START}{this}{self.dialect.HEX_END}"
@@ -2207,6 +2333,7 @@ class Generator(metaclass=_Generator):
         values_as_table = values_as_table and self.VALUES_AS_TABLE
 
         # The VALUES clause is still valid in an `INSERT INTO ..` statement, for example
+        # VALUES句は`INSERT INTO ..`文でも有効です。例えば、
         if values_as_table or not expression.find_ancestor(exp.From, exp.Join):
             args = self.expressions(expression)
             alias = self.sql(expression, "alias")
@@ -2220,6 +2347,7 @@ class Generator(metaclass=_Generator):
             return f"{values} AS {alias}" if alias else values
 
         # Converts `VALUES...` expression into a series of select unions.
+        # `VALUES...` 式を一連の選択ユニオンに変換します。
         alias_node = expression.args.get("alias")
         column_names = alias_node and alias_node.columns
 
@@ -2239,6 +2367,9 @@ class Generator(metaclass=_Generator):
             # This may result in poor performance for large-cardinality `VALUES` tables, due to
             # the deep nesting of the resulting exp.Unions. If this is a problem, either increase
             # `sys.setrecursionlimit` to avoid RecursionErrors, or don't set `pretty`.
+            # 結果のexp.Unionが深くネストされるため、大規模カーディナリティの`VALUES`テーブルでは
+            # パフォーマンスが低下する可能性があります。これが問題となる場合は、RecursionErrorsを回避するために
+            # `sys.setrecursionlimit`の値を増やすか、`pretty`を設定しないでください。
             query = reduce(lambda x, y: exp.union(x, y, distinct=False, copy=False), selects)
             return self.subquery_sql(query.subquery(alias_node and alias_node.this, copy=False))
 
@@ -2583,6 +2714,7 @@ class Generator(metaclass=_Generator):
             nulls_sort_change = " NULLS LAST"
 
         # If the NULLS FIRST/LAST clause is unsupported, we add another sort key to simulate it
+        # NULLS FIRST/LAST句がサポートされていない場合は、それをシミュレートするために別のソートキーを追加します。
         if nulls_sort_change and not self.NULL_ORDERING_SUPPORTED:
             window = expression.find_ancestor(exp.Window, exp.Select)
             if isinstance(window, exp.Window) and window.args.get("spec"):
@@ -2596,6 +2728,8 @@ class Generator(metaclass=_Generator):
             ):
                 # BigQuery does not allow these ordering/nulls combinations when used under
                 # an aggregation func or under a window containing one
+                # BigQueryでは、集計関数または1つを含むウィンドウで使用する場合、
+                # これらの順序/nullの組み合わせは許可されません。
                 ancestor = expression.find_ancestor(exp.AggFunc, exp.Window, exp.Select)
 
                 if isinstance(ancestor, exp.Window):
@@ -2755,8 +2889,9 @@ class Generator(metaclass=_Generator):
         operation_modifiers = self.expressions(expression, key="operation_modifiers", sep=" ")
         operation_modifiers = f"{self.sep()}{operation_modifiers}" if operation_modifiers else ""
 
-        # We use LIMIT_IS_TOP as a proxy for whether DISTINCT should go first because tsql and Teradata
-        # are the only dialects that use LIMIT_IS_TOP and both place DISTINCT first.
+        # LIMIT_IS_TOP は、DISTINCT を最初に配置するかどうかのプロキシとして使用します。
+        # これは、LIMIT_IS_TOP を使用する方言は tsql と Teradata のみであり、
+        # どちらも DISTINCT を最初に配置するためです。
         top_distinct = f"{distinct}{hint}{top}" if self.LIMIT_IS_TOP else f"{top}{hint}{distinct}"
         expressions = f"{self.sep()}{expressions}" if expressions else expressions
         sql = self.query_modifiers(
@@ -2767,6 +2902,7 @@ class Generator(metaclass=_Generator):
         )
 
         # If both the CTE and SELECT clauses have comments, generate the latter earlier
+        # CTE句とSELECT句の両方にコメントがある場合は、後者を先に生成する
         if expression.args.get("with"):
             sql = self.maybe_comment(sql, expression)
             expression.pop_comments()
@@ -2825,6 +2961,7 @@ class Generator(metaclass=_Generator):
             alias = f"{sample}{alias}"
 
             # Set to None so it's not generated again by self.query_modifiers()
+            # self.query_modifiers() によって再度生成されないように None に設定します。
             expression.set("sample", None)
 
         pivots = self.expressions(expression, key="pivots", sep="", flat=True)
@@ -3152,6 +3289,7 @@ class Generator(metaclass=_Generator):
 
     def formatphrase_sql(self, expression: exp.FormatPhrase) -> str:
         # Output the Teradata column FORMAT override.
+        # Teradata 列の FORMAT オーバーライドを出力します。
         # https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Types-and-Literals/Data-Type-Formats-and-Format-Phrases/FORMAT
         this = self.sql(expression, "this")
         fmt = self.sql(expression, "format")
@@ -3304,6 +3442,7 @@ class Generator(metaclass=_Generator):
 
     def anonymous_sql(self, expression: exp.Anonymous) -> str:
         # We don't normalize qualified functions such as a.b.foo(), because they can be case-sensitive
+        # a.b.foo()のような修飾された関数は大文字と小文字が区別される可能性があるため正規化しません。
         parent = expression.parent
         is_qualified = isinstance(parent, exp.Dot) and expression is parent.expression
         return self.func(
@@ -3316,6 +3455,7 @@ class Generator(metaclass=_Generator):
 
     def neg_sql(self, expression: exp.Neg) -> str:
         # This makes sure we don't convert "- - 5" to "--5", which is a comment
+        # これにより、「- - 5」がコメントである「--5」に変換されなくなります。
         this_sql = self.sql(expression, "this")
         sep = " " if this_sql[0] == "-" else ""
         return f"-{sep}{this_sql}"
@@ -4055,6 +4195,7 @@ class Generator(metaclass=_Generator):
         hints = table.args.get("hints")
         if hints and table.alias and isinstance(hints[0], exp.WithTableHint):
             # T-SQL syntax is MERGE ... <target_table> [WITH (<merge_hint>)] [[AS] table_alias]
+            # T-SQL構文はMERGE ... <target_table> [WITH (<merge_hint>)] [[AS] table_alias]です。
             table_alias = f" AS {self.sql(table.args['alias'].pop())}"
 
         this = self.sql(table)
@@ -4404,6 +4545,8 @@ class Generator(metaclass=_Generator):
         from sqlglot.dialects import Dialect
 
         # SQLGlot's executor supports ARRAY_ANY, so we don't wanna warn for the SQLGlot dialect
+        # SQLGlotのエグゼキュータはARRAY_ANYをサポートしているので、
+        # SQLGlot方言に対して警告を出す必要はありません。
         if self.dialect.__class__ != Dialect:
             self.unsupported("ARRAY_ANY is unsupported")
 
@@ -4449,6 +4592,7 @@ class Generator(metaclass=_Generator):
         return f"TRUNCATE {target}{exists}{tables}{on_cluster}{identity}{option}{partition}"
 
     # This transpiles T-SQL's CONVERT function
+    # これはT-SQLのCONVERT関数をトランスパイルします
     # https://learn.microsoft.com/en-us/sql/t-sql/functions/cast-and-convert-transact-sql?view=sql-server-ver16
     def convert_sql(self, expression: exp.Convert) -> str:
         to = expression.this
@@ -4461,6 +4605,7 @@ class Generator(metaclass=_Generator):
             return ""
 
         # Retrieve length of datatype and override to default if not specified
+        # データ型の長さを取得し、指定されていない場合はデフォルトに上書きします
         if not seq_get(to.expressions, 0) and to.this in self.PARAMETERIZABLE_TEXT_TYPES:
             to = exp.DataType.build(to.this, expressions=[exp.Literal.number(30)], nested=False)
 
@@ -4468,6 +4613,7 @@ class Generator(metaclass=_Generator):
         cast = exp.Cast if strict else exp.TryCast
 
         # Check whether a conversion with format (T-SQL calls this 'style') is applicable
+        # フォーマットによる変換（T-SQLではこれを「スタイル」と呼びます）が適用可能かどうかを確認します。
         if isinstance(style, exp.Literal) and style.is_int:
             from sqlglot.dialects.tsql import TSQL
 
@@ -4530,6 +4676,7 @@ class Generator(metaclass=_Generator):
 
         if self.IGNORE_NULLS_IN_FUNC and not expression.meta.get("inline"):
             # The first modifier here will be the one closest to the AggFunc's arg
+            # ここでの最初の修飾子はAggFuncの引数に最も近いものになります
             mods = sorted(
                 expression.find_all(exp.HavingMax, exp.Order, exp.Limit),
                 key=lambda x: 0
@@ -4565,9 +4712,11 @@ class Generator(metaclass=_Generator):
             upper = option.upper()
 
             # Snowflake FILE_FORMAT options are separated by whitespace
+            # SnowflakeのFILE_FORMATオプションは空白で区切られます
             sep = " " if upper == "FILE_FORMAT" else ", "
 
             # Databricks copy/format options do not set their list of values with EQ
+            # Databricks のコピー/フォーマットオプションでは、EQ を使用して値のリストを設定しません。
             op = " " if upper in ("COPY_OPTIONS", "FORMAT_OPTIONS") else " = "
             values = self.expressions(expression, flat=True, sep=sep)
             return f"{option}{op}({values})"
@@ -4671,6 +4820,7 @@ class Generator(metaclass=_Generator):
 
         if isinstance(expr, exp.Func):
             # T-SQL's CLR functions are case sensitive
+            # T-SQLのCLR関数は大文字と小文字を区別します
             expr = f"{self.sql(expr, 'this')}({self.format_args(*expr.expressions)})"
         else:
             expr = self.sql(expression, "expression")
@@ -4803,6 +4953,7 @@ class Generator(metaclass=_Generator):
 
     def oncondition_sql(self, expression: exp.OnCondition) -> str:
         # Static options like "NULL ON ERROR" are stored as strings, in contrast to "DEFAULT <expr> ON ERROR"
+        # 「NULL ON ERROR」のような静的オプションは、「DEFAULT <expr> ON ERROR」とは対照的に文字列として保存されます。
         empty = expression.args.get("empty")
         empty = (
             f"DEFAULT {empty} ON EMPTY"
@@ -4852,6 +5003,8 @@ class Generator(metaclass=_Generator):
 
         # Add a NULL FILTER on the column to mimic the results going from a dialect that excludes nulls
         # on ARRAY_AGG (e.g Spark) to one that doesn't (e.g. DuckDB)
+        # ARRAY_AGG の null を除外する方言 (例: Spark) から除外しない方言 (例: DuckDB) への
+        # 結果を模倣するために、列に NULL FILTER を追加します。
         if self.dialect.ARRAY_AGG_INCLUDES_NULLS and expression.args.get("nulls_excluded"):
             parent = expression.parent
             if isinstance(parent, exp.Filter):
@@ -4860,8 +5013,10 @@ class Generator(metaclass=_Generator):
             else:
                 this = expression.this
                 # Do not add the filter if the input is not a column (e.g. literal, struct etc)
+                # 入力が列ではない場合（リテラル、構造体など）はフィルターを追加しないでください。
                 if this.find(exp.Column):
                     # DISTINCT is already present in the agg function, do not propagate it to FILTER as well
+                    # DISTINCT は agg 関数にすでに存在するため、FILTER にも伝播しないでください。
                     this_sql = (
                         self.expressions(this)
                         if isinstance(this, exp.Distinct)
@@ -4964,6 +5119,9 @@ class Generator(metaclass=_Generator):
             # This is a BigQuery specific argument for STRING(<timestamp_expr>, <time_zone>)
             # BigQuery stores timestamps internally as UTC, so ConvertTimezone is used with UTC
             # set for source_tz to transpile the time conversion before the STRING cast
+            # これはBigQuery固有のSTRING(<timestamp_expr>, <time_zone>)引数です。
+            # BigQueryはタイムスタンプを内部的にUTCで保存するため、source_tzにUTCを設定した
+            # ConvertTimezoneを使用して、STRINGキャストの前に時刻変換をトランスパイルします。
             this = exp.ConvertTimezone(
                 source_tz=exp.Literal.string("UTC"), target_tz=zone, timestamp=this
             )
@@ -5000,12 +5158,14 @@ class Generator(metaclass=_Generator):
         dim = expression.expression
 
         # For dialects that don't support the dimension arg, we can safely transpile it's default value (1st dimension)
+        # 次元引数をサポートしていない方言の場合、そのデフォルト値（1番目の次元）を安全にトランスパイルすることができます。
         if dim and self.ARRAY_SIZE_DIM_REQUIRED is None:
             if not (dim.is_int and dim.name == "1"):
                 self.unsupported("Cannot transpile dimension argument for ARRAY_LENGTH")
             dim = None
 
         # If dimension is required but not specified, default initialize it
+        # ディメンションが必須であるが指定されていない場合は、デフォルトで初期化されます。
         if self.ARRAY_SIZE_DIM_REQUIRED and not dim:
             dim = exp.Literal.number(1)
 
@@ -5023,6 +5183,8 @@ class Generator(metaclass=_Generator):
         this = self.sql(expression, "this")
         # the DATABASE keyword is required if IF EXISTS is set
         # without it, DuckDB throws an error: Parser Error: syntax error at or near "exists" (Line Number: 1)
+        # DATABASE キーワードは必須です。IF EXISTS が設定されていない場合、DuckDB はエラーを
+        # スローします: パーサー エラー: "exists" またはその付近の構文エラー (行番号: 1)
         # ref: https://duckdb.org/docs/stable/sql/statements/attach.html#detach-syntax
         exists_sql = " DATABASE IF EXISTS" if expression.args.get("exists") else ""
 

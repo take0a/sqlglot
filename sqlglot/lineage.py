@@ -76,6 +76,7 @@ def lineage(
     **kwargs,
 ) -> Node:
     """Build the lineage graph for a column of a SQL query.
+        SQL クエリのカラムのリネージグラフを構築します。
 
     Args:
         column: The column to build the lineage for.
@@ -132,6 +133,8 @@ def to_node(
 ) -> Node:
     # Find the specific select clause that is the source of the column we want.
     # This can either be a specific, named select or a generic `*` clause.
+    # 必要な列のソースとなる特定の SELECT 句を見つけます。
+    # これは、特定の名前付き SELECT 句、または汎用の `*` 句のいずれかになります。
     select = (
         scope.expression.selects[column]
         if isinstance(column, int)
@@ -188,6 +191,7 @@ def to_node(
     if trim_selects and isinstance(scope.expression, exp.Select):
         # For better ergonomics in our node labels, replace the full select with
         # a version that has only the column we care about.
+        # ノードラベルのわかりやすさを向上させるには、完全な選択を、必要な列のみを含むバージョンに置き換えます。
         #   "x", SELECT x, y FROM foo
         #     => "x", SELECT x FROM foo
         source = t.cast(exp.Expression, scope.expression.select(select, append=False))
@@ -195,6 +199,7 @@ def to_node(
         source = scope.expression
 
     # Create the node for this step in the lineage chain, and attach it to the previous one.
+    # リネージチェーン内のこのステップのノードを作成し、前のノードに接続します。
     node = Node(
         name=f"{scope_name}.{column}" if scope_name else str(column),
         source=source,
@@ -226,6 +231,7 @@ def to_node(
             )
 
     # if the select is a star add all scope sources as downstreams
+    # 選択がスターの場合、すべてのスコープソースをダウンストリームとして追加します
     if select.is_star:
         for source in scope.sources.values():
             if isinstance(source, Scope):
@@ -235,9 +241,11 @@ def to_node(
             )
 
     # Find all columns that went into creating this one to list their lineage nodes.
+    # この列の作成に使用されたすべての列を検索し、その系統ノードを一覧表示します。
     source_columns = set(find_all_in_scope(select, exp.Column))
 
     # If the source is a UDTF find columns used in the UDTF to generate the table
+    # ソースがUDTFの場合、テーブルを生成するためにUDTFで使用される列を検索します
     if isinstance(source, exp.UDTF):
         source_columns |= set(source.find_all(exp.Column))
         derived_tables = [
@@ -264,6 +272,12 @@ def to_node(
         # to the column indices 1, 3. Here, only the columns used in the aggregations are of interest
         # in the lineage, so lookup the pivot column name by index and map that with the columns used
         # in the aggregation.
+        # 各集計関数について、ピボットはaggfuncと組み合わせたカテゴリ内の各フィールドに対して新しい列を作成します。
+        # したがって、解析される列の順序はcat_a_value_sum、cat_a、b_value_sum、bとなります。
+        # この段階的な方法により、aggfunc 'sum(value) as value_sum'は列インデックス0と2に属し、
+        # エイリアスのないaggfunc 'max(price)'は列インデックス1と3に属します。
+        # ここでは、集計で使用される列のみが系統上重要であるため、ピボット列名をインデックスで検索し、
+        # それを集計で使用される列にマッピングします。
         #
         # Example: PIVOT (SUM(value) AS value_sum, MAX(price)) FOR category IN ('a' AS cat_a, 'b')
         pivot_columns = pivot.args["columns"]
@@ -288,6 +302,8 @@ def to_node(
                 reference_node_name = selected_node.name if selected_node else None
 
             # The table itself came from a more specific scope. Recurse into that one using the unaliased column name.
+            # テーブル自体はより限定的なスコープから取得されています。
+            # エイリアスのない列名を使用して、そのテーブルを再帰的に参照してください。
             to_node(
                 c.name,
                 scope=source,
@@ -307,6 +323,8 @@ def to_node(
             else:
                 # The column is not in the pivot, so it must be an implicit column of the
                 # pivoted source -- adapt column to be from the implicit pivoted source.
+                # 列はピボット内にないため、ピボット ソースの暗黙的な列である必要があります。
+                # 暗黙的なピボット ソースからの列に適応します。
                 downstream_columns.append(exp.column(c.this, table=pivot.parent.alias_or_name))
 
             for downstream_column in downstream_columns:
@@ -337,6 +355,9 @@ def to_node(
             # of the line. At this point, if a source is not found it means this column's lineage
             # is unknown. This can happen if the definition of a source used in a query is not
             # passed into the `sources` map.
+            # ソースはスコープではなく、列はどのピボットにも存在しません。つまり、行の末尾に到達しました。
+            # この時点でソースが見つからない場合、この列の系統が不明であることを意味します。これは、
+            # クエリで使用されるソースの定義が `sources` マップに渡されていない場合に発生する可能性があります。
             source = source or exp.Placeholder()
             node.downstream.append(
                 Node(name=c.sql(comments=False), source=source, expression=source)
@@ -347,6 +368,7 @@ def to_node(
 
 class GraphHTML:
     """Node to HTML generator using vis.js.
+    vis.js を使用したノードから HTML へのジェネレーター。
 
     https://visjs.github.io/vis-network/docs/network/
     """

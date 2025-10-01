@@ -16,7 +16,8 @@ if t.TYPE_CHECKING:
 
 
 class Schema(abc.ABC):
-    """Abstract base class for database schemas"""
+    """Abstract base class for database schemas
+    データベーススキーマの抽象基本クラス"""
 
     dialect: DialectType
 
@@ -32,13 +33,20 @@ class Schema(abc.ABC):
         """
         Register or update a table. Some implementing classes may require column information to also be provided.
         The added table must have the necessary number of qualifiers in its path to match the schema's nesting level.
+        テーブルを登録または更新します。実装クラスによっては、列情報も提供する必要がある場合があります。
+        追加するテーブルには、スキーマのネストレベルに一致するように、パスに必要な数の修飾子が必要です。
 
         Args:
             table: the `Table` expression instance or string representing the table.
+                テーブルを表す `Table` 式インスタンスまたは文字列。
             column_mapping: a column mapping that describes the structure of the table.
+                テーブルの構造を記述する列マッピング。
             dialect: the SQL dialect that will be used to parse `table` if it's a string.
+                `table` が文字列の場合に解析するために使用される SQL 方言。
             normalize: whether to normalize identifiers according to the dialect of interest.
+                関心のある方言に応じて識別子を正規化するかどうか。
             match_depth: whether to enforce that the table must match the schema's depth or not.
+                テーブルがスキーマの深さと一致することを強制するかどうか。
         """
 
     @abc.abstractmethod
@@ -51,15 +59,21 @@ class Schema(abc.ABC):
     ) -> t.Sequence[str]:
         """
         Get the column names for a table.
+        テーブルの列名を取得する
 
         Args:
             table: the `Table` expression instance.
+                `Table` 式インスタンス。
             only_visible: whether to include invisible columns.
+                非表示の列を含めるかどうか。
             dialect: the SQL dialect that will be used to parse `table` if it's a string.
+                `table` が文字列の場合に解析するために使用される SQL 方言。
             normalize: whether to normalize identifiers according to the dialect of interest.
+                関心のある方言に応じて識別子を正規化するかどうか。
 
         Returns:
             The sequence of column names.
+            列名の順序。
         """
 
     @abc.abstractmethod
@@ -72,15 +86,19 @@ class Schema(abc.ABC):
     ) -> exp.DataType:
         """
         Get the `sqlglot.exp.DataType` type of a column in the schema.
+        スキーマ内の列の `sqlglot.exp.DataType` タイプを取得します。
 
         Args:
-            table: the source table.
-            column: the target column.
+            table: the source table. 元のテーブル。
+            column: the target column. 対象のカラム。
             dialect: the SQL dialect that will be used to parse `table` if it's a string.
+                `table` が文字列の場合に解析するために使用される SQL 方言。
             normalize: whether to normalize identifiers according to the dialect of interest.
+                関心のある方言に応じて識別子を正規化するかどうか。
 
         Returns:
             The resulting column type.
+            結果の列タイプ。
         """
 
     def has_column(
@@ -92,15 +110,19 @@ class Schema(abc.ABC):
     ) -> bool:
         """
         Returns whether `column` appears in `table`'s schema.
+        `column` が `table` のスキーマに現れるかどうかを返します。
 
         Args:
-            table: the source table.
-            column: the target column.
+            table: the source table. 元のテーブル。
+            column: the target column. 対象のカラム。
             dialect: the SQL dialect that will be used to parse `table` if it's a string.
+                `table` が文字列の場合に解析するために使用される SQL 方言。
             normalize: whether to normalize identifiers according to the dialect of interest.
+                関心のある方言に応じて識別子を正規化するかどうか。
 
         Returns:
             True if the column appears in the schema, False otherwise.
+            列がスキーマに表示される場合は True、それ以外の場合は False。
         """
         name = column if isinstance(column, str) else column.name
         return name in self.column_names(table, dialect=dialect, normalize=normalize)
@@ -110,11 +132,13 @@ class Schema(abc.ABC):
     def supported_table_args(self) -> t.Tuple[str, ...]:
         """
         Table arguments this schema support, e.g. `("this", "db", "catalog")`
+        このスキーマがサポートするテーブル引数、例: `("this", "db", "catalog")`
         """
 
     @property
     def empty(self) -> bool:
-        """Returns whether the schema is empty."""
+        """Returns whether the schema is empty.
+        スキーマが空かどうかを返します。"""
         return True
 
 
@@ -158,14 +182,17 @@ class AbstractMappingSchema:
     ) -> t.Optional[t.Any]:
         """
         Returns the schema of a given table.
+        指定されたテーブルのスキーマを返します。
 
         Args:
-            table: the target table.
+            table: the target table. 対象のテーブル
             raise_on_missing: whether to raise in case the schema is not found.
+                スキーマが見つからない場合に例外を発生するかどうか。
             ensure_data_types: whether to convert `str` types to their `DataType` equivalents.
+                `str` 型を `DataType` の同等の型に変換するかどうか。
 
         Returns:
-            The schema of the target table.
+            The schema of the target table. 対象のテーブルのスキーマ。
         """
         parts = self.table_parts(table)[0 : len(self.supported_table_args)]
         value, trie = in_trie(self.mapping_trie, parts)
@@ -199,15 +226,19 @@ class AbstractMappingSchema:
 class MappingSchema(AbstractMappingSchema, Schema):
     """
     Schema based on a nested mapping.
+    ネストされたマッピングに基づくスキーマ。
 
     Args:
         schema: Mapping in one of the following forms:
+            次のいずれかの形式でマッピングします。
             1. {table: {col: type}}
             2. {db: {table: {col: type}}}
             3. {catalog: {db: {table: {col: type}}}}
             4. None - Tables will be added later
         visible: Optional mapping of which columns in the schema are visible. If not provided, all columns
             are assumed to be visible. The nesting should mirror that of the schema:
+            スキーマ内のどの列が表示されるかを示すオプションのマッピング。指定しない場合は、
+            すべての列が表示されるものとみなされます。ネストはスキーマのネストを反映する必要があります。
             1. {table: set(*cols)}}
             2. {db: {table: set(*cols)}}}
             3. {catalog: {db: {table: set(*cols)}}}}
@@ -276,13 +307,20 @@ class MappingSchema(AbstractMappingSchema, Schema):
         """
         Register or update a table. Updates are only performed if a new column mapping is provided.
         The added table must have the necessary number of qualifiers in its path to match the schema's nesting level.
+        テーブルを登録または更新します。更新は、新しい列マッピングが指定されている場合にのみ実行されます。
+        追加されたテーブルのパスには、スキーマのネストレベルに一致するように必要な数の修飾子が含まれている必要があります。
 
         Args:
             table: the `Table` expression instance or string representing the table.
+                テーブルを表す `Table` 式インスタンスまたは文字列。
             column_mapping: a column mapping that describes the structure of the table.
+                テーブルの構造を記述する列マッピング。
             dialect: the SQL dialect that will be used to parse `table` if it's a string.
+                `table` が文字列の場合に解析するために使用される SQL 方言。
             normalize: whether to normalize identifiers according to the dialect of interest.
-            match_depth: whether to enforce that the table must match the schema's depth or not.
+                関心のある方言に応じて識別子を正規化するかどうか。
+            match_depth: 
+                テーブルがスキーマの深さと一致することを強制するかどうか。
         """
         normalized_table = self._normalize_table(table, dialect=dialect, normalize=normalize)
 
@@ -368,12 +406,13 @@ class MappingSchema(AbstractMappingSchema, Schema):
     def _normalize(self, schema: t.Dict) -> t.Dict:
         """
         Normalizes all identifiers in the schema.
+        スキーマ内のすべての識別子を正規化します。
 
         Args:
-            schema: the schema to normalize.
+            schema: the schema to normalize. 正規化するスキーマ。
 
         Returns:
-            The normalized schema mapping.
+            The normalized schema mapping. 正規化されたスキーマ マッピング。
         """
         normalized_mapping: t.Dict = {}
         flattened_schema = flatten_schema(schema)
@@ -446,13 +485,15 @@ class MappingSchema(AbstractMappingSchema, Schema):
     def _to_data_type(self, schema_type: str, dialect: DialectType = None) -> exp.DataType:
         """
         Convert a type represented as a string to the corresponding `sqlglot.exp.DataType` object.
+        文字列として表される型を対応する `sqlglot.exp.DataType` オブジェクトに変換します。
 
         Args:
-            schema_type: the type we want to convert.
+            schema_type: the type we want to convert. 変換したい型。
             dialect: the SQL dialect that will be used to parse `schema_type`, if needed.
+                必要に応じて、`schema_type` を解析するために使用される SQL 方言。
 
         Returns:
-            The resulting expression type.
+            The resulting expression type. 結果の式の型。
         """
         if schema_type not in self._type_mapping_cache:
             dialect = dialect or self.dialect
@@ -530,15 +571,20 @@ def nested_get(
 ) -> t.Optional[t.Any]:
     """
     Get a value for a nested dictionary.
+    ネストされた辞書の値を取得します。
 
     Args:
-        d: the dictionary to search.
+        d: the dictionary to search. 検索する辞書。
         *path: tuples of (name, key), where:
             `key` is the key in the dictionary to get.
             `name` is a string to use in the error if `key` isn't found.
+             (名前、キー) のタプル。ここで:
+            `key` は取得する辞書のキーです。
+            `name` は `key` が見つからない場合にエラーで使用する文字列です。
 
     Returns:
         The value or None if it doesn't exist.
+        値、または存在しない場合は None。
     """
     for name, key in path:
         d = d.get(key)  # type: ignore
@@ -554,6 +600,7 @@ def nested_get(
 def nested_set(d: t.Dict, keys: t.Sequence[str], value: t.Any) -> t.Dict:
     """
     In-place set a value for a nested dictionary
+    ネストされた辞書の値をその場で設定する
 
     Example:
         >>> nested_set({}, ["top_key", "second_key"], "value")
@@ -563,12 +610,14 @@ def nested_set(d: t.Dict, keys: t.Sequence[str], value: t.Any) -> t.Dict:
         {'top_key': {'third_key': 'third_value', 'second_key': 'value'}}
 
     Args:
-        d: dictionary to update.
+        d: dictionary to update. 更新する辞書。
         keys: the keys that makeup the path to `value`.
+            `value` へのパスを構成するキー。
         value: the value to set in the dictionary for the given key path.
+            指定されたキーパスの辞書に設定する値。
 
     Returns:
-        The (possibly) updated dictionary.
+        The (possibly) updated dictionary. （おそらく）更新された辞書。
     """
     if not keys:
         return d

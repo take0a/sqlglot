@@ -50,26 +50,36 @@ def optimize(
 ) -> exp.Expression:
     """
     Rewrite a sqlglot AST into an optimized form.
+    sqlglot AST を最適化された形式に書き換えます。
 
     Args:
-        expression: expression to optimize
+        expression: expression to optimize 最適化する式
         schema: database schema.
             This can either be an instance of `sqlglot.optimizer.Schema` or a mapping in one of
             the following forms:
+            データベーススキーマ。これは `sqlglot.optimizer.Schema` のインスタンス、
+            または次のいずれかの形式のマッピングになります。
                 1. {table: {col: type}}
                 2. {db: {table: {col: type}}}
                 3. {catalog: {db: {table: {col: type}}}}
             If no schema is provided then the default schema defined at `sqlgot.schema` will be used
+            スキーマが指定されていない場合は、`sqlgot.schema` で定義されたデフォルトのスキーマが使用されます。
         db: specify the default database, as might be set by a `USE DATABASE db` statement
+            `USE DATABASE db` ステートメントで設定されるデフォルトのデータベースを指定します。
         catalog: specify the default catalog, as might be set by a `USE CATALOG c` statement
-        dialect: The dialect to parse the sql string.
+            `USE CATALOG c` 文で設定されるデフォルトのカタログを指定します。
+        dialect: The dialect to parse the sql string. SQL 文字列を解析する方言。
         rules: sequence of optimizer rules to use.
             Many of the rules require tables and columns to be qualified.
             Do not remove `qualify` from the sequence of rules unless you know what you're doing!
+            使用するオプティマイザルールのシーケンス。
+            多くのルールでは、テーブルと列を修飾する必要があります。
+            何をしているのかよく理解していない限り、ルールのシーケンスから `qualify` を削除しないでください。
         **kwargs: If a rule has a keyword argument with a same name in **kwargs, it will be passed in.
+            ルールに **kwargs と同じ名前のキーワード引数がある場合は、それが渡されます。
 
     Returns:
-        The optimized expression.
+        The optimized expression. 最適化された式
     """
     schema = ensure_schema(schema, dialect=dialect)
     possible_kwargs = {

@@ -24,7 +24,7 @@ logger = logging.getLogger("sqlglot")
 
 OPTIONS_TYPE = t.Dict[str, t.Sequence[t.Union[t.Sequence[str], str]]]
 
-# Used to detect alphabetical characters and +/- in timestamp literals
+# タイムスタンプリテラル内のアルファベット文字と +/- を検出するために使用されます
 TIME_ZONE_RE: t.Pattern[str] = re.compile(r":.*?[a-zA-Z\+\-]")
 
 
@@ -62,6 +62,7 @@ def binary_range_parser(
 
 def build_logarithm(args: t.List, dialect: Dialect) -> exp.Func:
     # Default argument order is base, expression
+    # デフォルトの引数の順序は基数、式です
     this = seq_get(args, 0)
     expression = seq_get(args, 1)
 
@@ -80,12 +81,14 @@ def build_hex(args: t.List, dialect: Dialect) -> exp.Hex | exp.LowerHex:
 
 def build_lower(args: t.List) -> exp.Lower | exp.Hex:
     # LOWER(HEX(..)) can be simplified to LowerHex to simplify its transpilation
+    # LOWER(HEX(..)) は、LowerHex に簡略化して、トランスパイルを簡略化することができます。
     arg = seq_get(args, 0)
     return exp.LowerHex(this=arg.this) if isinstance(arg, exp.Hex) else exp.Lower(this=arg)
 
 
 def build_upper(args: t.List) -> exp.Upper | exp.Hex:
     # UPPER(HEX(..)) can be simplified to Hex to simplify its transpilation
+    # UPPER(HEX(..)) は Hex に簡略化してトランスパイルを簡素化できます。
     arg = seq_get(args, 0)
     return exp.Hex(this=arg.this) if isinstance(arg, exp.Hex) else exp.Upper(this=arg)
 
@@ -108,6 +111,7 @@ def build_mod(args: t.List) -> exp.Mod:
     expression = seq_get(args, 1)
 
     # Wrap the operands if they are binary nodes, e.g. MOD(a + 1, 7) -> (a + 1) % 7
+    # オペランドがバイナリノードの場合はラップします。例: MOD(a + 1, 7) -> (a + 1) % 7
     this = exp.Paren(this=this) if isinstance(this, exp.Binary) else this
     expression = exp.Paren(this=expression) if isinstance(expression, exp.Binary) else expression
 
@@ -181,15 +185,19 @@ class _Parser(type):
 class Parser(metaclass=_Parser):
     """
     Parser consumes a list of tokens produced by the Tokenizer and produces a parsed syntax tree.
+    パーサーはトークナイザーによって生成されたトークンのリストを消費し、解析された構文ツリーを生成します。
 
     Args:
-        error_level: The desired error level.
+        error_level: The desired error level.必要なエラー レベル。
             Default: ErrorLevel.IMMEDIATE
         error_message_context: The amount of context to capture from a query string when displaying
-            the error message (in number of characters).
+            the error message (in number of characters). 
+            エラーメッセージを表示するときにクエリ文字列から取得するコンテキストの量 (文字数)。
             Default: 100
         max_errors: Maximum number of error messages to include in a raised ParseError.
             This is only relevant if error_level is ErrorLevel.RAISE.
+            発生した ParseError に含めるエラー メッセージの最大数。
+            これは、error_level が ErrorLevel.RAISE の場合にのみ関係します。
             Default: 3
     """
 
@@ -483,6 +491,7 @@ class Parser(metaclass=_Parser):
     }
 
     # Tokens that can represent identifiers
+    # 識別子を表すトークン
     ID_VAR_TOKENS = {
         TokenType.ALL,
         TokenType.ATTACH,
@@ -1156,6 +1165,9 @@ class Parser(metaclass=_Parser):
             # Partitioning by bucket or truncate follows the syntax:
             # PARTITION BY (BUCKET(..) | TRUNCATE(..))
             # If we don't have parenthesis after each keyword, we should instead parse this as an identifier
+            # バケットまたは切り捨てによるパーティション分割は、次の構文に従います。
+            # PARTITION BY (BUCKET(..) | TRUNCATE(..))
+            # 各キーワードの後に​​括弧がない場合は、識別子として解析する必要があります。
             self._retreat(self._index - 1)
             return None
 
@@ -1447,9 +1459,11 @@ class Parser(metaclass=_Parser):
     PRIVILEGE_FOLLOW_TOKENS = {TokenType.ON, TokenType.COMMA, TokenType.L_PAREN}
 
     # The style options for the DESCRIBE statement
+    # DESCRIBE文のスタイルオプション
     DESCRIBE_STYLES = {"ANALYZE", "EXTENDED", "FORMATTED", "HISTORY"}
 
     # The style options for the ANALYZE statement
+    # ANALYZEステートメントのスタイルオプション
     ANALYZE_STYLES = {
         "BUFFER_USAGE_LIMIT",
         "FULL",
@@ -1490,75 +1504,101 @@ class Parser(metaclass=_Parser):
     LOG_DEFAULTS_TO_LN = False
 
     # Whether the table sample clause expects CSV syntax
+    # テーブルサンプル句がCSV構文を期待するかどうか
     TABLESAMPLE_CSV = False
 
     # The default method used for table sampling
+    # テーブルサンプリングに使用されるデフォルトの方法
     DEFAULT_SAMPLING_METHOD: t.Optional[str] = None
 
     # Whether the SET command needs a delimiter (e.g. "=") for assignments
+    # SETコマンドに代入のための区切り文字（例："="）が必要かどうか
     SET_REQUIRES_ASSIGNMENT_DELIMITER = True
 
     # Whether the TRIM function expects the characters to trim as its first argument
+    # TRIM関数が最初の引数としてトリムする文字を期待するかどうか
     TRIM_PATTERN_FIRST = False
 
     # Whether string aliases are supported `SELECT COUNT(*) 'count'`
+    # 文字列エイリアスがサポートされているかどうか `SELECT COUNT(*) 'count'`
     STRING_ALIASES = False
 
     # Whether query modifiers such as LIMIT are attached to the UNION node (vs its right operand)
+    # LIMIT などのクエリ修飾子が UNION ノードに付加されているかどうか（右オペランドに対して）
     MODIFIERS_ATTACHED_TO_SET_OP = True
     SET_OP_MODIFIERS = {"order", "limit", "offset"}
 
     # Whether to parse IF statements that aren't followed by a left parenthesis as commands
+    # 左括弧が続かないIF文をコマンドとして解析するかどうか
     NO_PAREN_IF_COMMANDS = True
 
     # Whether the -> and ->> operators expect documents of type JSON (e.g. Postgres)
+    # -> および ->> 演算子が JSON タイプのドキュメントを期待するかどうか (例: Postgres)
     JSON_ARROWS_REQUIRE_JSON_TYPE = False
 
     # Whether the `:` operator is used to extract a value from a VARIANT column
+    # VARIANT列から値を抽出するのに`:`演算子を使用するかどうか
     COLON_IS_VARIANT_EXTRACT = False
 
     # Whether or not a VALUES keyword needs to be followed by '(' to form a VALUES clause.
     # If this is True and '(' is not found, the keyword will be treated as an identifier
+    # VALUES 句を形成するために VALUES キーワードの後に​​ '(' を続ける必要があるかどうか。
+    # これが True で '(' が見つからない場合、キーワードは識別子として扱われます
     VALUES_FOLLOWED_BY_PAREN = True
 
     # Whether implicit unnesting is supported, e.g. SELECT 1 FROM y.z AS z, z.a (Redshift)
+    # 暗黙的なネスト解除がサポートされているかどうか（例：SELECT 1 FROM y.z AS z, z.a (Redshift)）
     SUPPORTS_IMPLICIT_UNNEST = False
 
     # Whether or not interval spans are supported, INTERVAL 1 YEAR TO MONTHS
+    # 間隔スパンがサポートされているかどうか、INTERVAL 1 YEAR TO MONTHS
     INTERVAL_SPANS = True
 
     # Whether a PARTITION clause can follow a table reference
+    # PARTITION句がテーブル参照の後に続くことができるかどうか
     SUPPORTS_PARTITION_SELECTION = False
 
     # Whether the `name AS expr` schema/column constraint requires parentheses around `expr`
+    # `name AS expr` スキーマ/列制約で `expr` を括弧で囲む必要があるかどうか
     WRAPPED_TRANSFORM_COLUMN_CONSTRAINT = True
 
     # Whether the 'AS' keyword is optional in the CTE definition syntax
+    # CTE定義構文において「AS」キーワードがオプションであるかどうか
     OPTIONAL_ALIAS_TOKEN_CTE = True
 
     # Whether renaming a column with an ALTER statement requires the presence of the COLUMN keyword
+    # ALTER文で列名を変更する場合、COLUMNキーワードが必要かどうか
     ALTER_RENAME_REQUIRES_COLUMN = True
 
     # Whether all join types have the same precedence, i.e., they "naturally" produce a left-deep tree.
     # In standard SQL, joins that use the JOIN keyword take higher precedence than comma-joins. That is
     # to say, JOIN operators happen before comma operators. This is not the case in some dialects, such
     # as BigQuery, where all joins have the same precedence.
+    # すべての結合タイプが同じ優先順位を持つかどうか、つまり「自然に」左深のツリーが生成されるかどうか。
+    # 標準 SQL では、JOIN キーワードを使用する結合は、カンマ結合よりも優先順位が高くなります。
+    # つまり、JOIN 演算子はカンマ演算子よりも前に実行されます。
+    # BigQuery など、すべての結合が同じ優先順位を持つ一部の方言では、これは当てはまりません。
     JOINS_HAVE_EQUAL_PRECEDENCE = False
 
     # Whether TIMESTAMP <literal> can produce a zone-aware timestamp
+    # TIMESTAMP <literal> がゾーン対応のタイムスタンプを生成できるかどうか
     ZONE_AWARE_TIMESTAMP_CONSTRUCTOR = False
 
-    # Whether map literals support arbitrary expressions as keys.
-    # When True, allows complex keys like arrays or literals: {[1, 2]: 3}, {1: 2} (e.g. DuckDB).
-    # When False, keys are typically restricted to identifiers.
+    # マップリテラルがキーとして任意の式をサポートするかどうか。
+    # True の場合、配列やリテラルなどの複雑なキーが許可されます: {[1, 2]: 3}, {1: 2} (例: DuckDB)。
+    # False の場合、キーは通常識別子に制限されます。
     MAP_KEYS_ARE_ARBITRARY_EXPRESSIONS = False
 
     # Whether JSON_EXTRACT requires a JSON expression as the first argument, e.g this
     # is true for Snowflake but not for BigQuery which can also process strings
+    # JSON_EXTRACT が最初の引数として JSON 式を必要とするかどうか。たとえば、これは 
+    # Snowflake では当てはまりますが、文字列も処理できる BigQuery では当てはまりません。
     JSON_EXTRACT_REQUIRES_JSON_EXPRESSION = False
 
     # Dialects like Databricks support JOINS without join criteria
     # Adding an ON TRUE, makes transpilation semantically correct for other dialects
+    # Databricksなどの方言は、結合条件なしのJOINをサポートしています。
+    # ON TRUEを追加すると、他の方言でも意味的に正しいトランスパイルが行われます。
     ADD_JOIN_ON_TRUE = False
 
     __slots__ = (
@@ -1613,13 +1653,16 @@ class Parser(metaclass=_Parser):
         """
         Parses a list of tokens and returns a list of syntax trees, one tree
         per parsed SQL statement.
+        トークンのリストを解析し、解析された SQL ステートメントごとに 1 つのツリーの構文ツリーのリストを返します。
 
         Args:
-            raw_tokens: The list of tokens.
+            raw_tokens: The list of tokens. トークンのリスト。
             sql: The original SQL string, used to produce helpful debug messages.
+                役立つデバッグ メッセージを生成するために使用される元の SQL 文字列。
 
         Returns:
             The list of the produced syntax trees.
+            生成された構文ツリーのリスト。
         """
         return self._parse(
             parse_method=self.__class__._parse_statement, raw_tokens=raw_tokens, sql=sql
@@ -1635,14 +1678,19 @@ class Parser(metaclass=_Parser):
         Parses a list of tokens into a given Expression type. If a collection of Expression
         types is given instead, this method will try to parse the token list into each one
         of them, stopping at the first for which the parsing succeeds.
+        トークンのリストを指定された式型に解析します。代わりに式型のコレクションが指定された場合、
+        このメソッドはトークンのリストを各式型に解析しようと試み、解析が成功した最初の式型で停止します。
 
         Args:
             expression_types: The expression type(s) to try and parse the token list into.
-            raw_tokens: The list of tokens.
+                トークン リストを解析しようとする式のタイプ。
+            raw_tokens: The list of tokens. トークンのリスト。
             sql: The original SQL string, used to produce helpful debug messages.
+                役立つデバッグ メッセージを生成するために使用される元の SQL 文字列。
 
         Returns:
             The target Expression.
+            対象となる式。
         """
         errors = []
         for expression_type in ensure_list(expression_types):
@@ -1700,7 +1748,8 @@ class Parser(metaclass=_Parser):
         return expressions
 
     def check_errors(self) -> None:
-        """Logs or raises any found errors, depending on the chosen error level setting."""
+        """Logs or raises any found errors, depending on the chosen error level setting.
+        選択したエラー レベルの設定に応じて、見つかったエラーをログに記録または報告します。"""
         if self.error_level == ErrorLevel.WARN:
             for error in self.errors:
                 logger.error(str(error))
@@ -1714,6 +1763,7 @@ class Parser(metaclass=_Parser):
         """
         Appends an error in the list of recorded errors or raises it, depending on the chosen
         error level setting.
+        選択したエラーレベルの設定に応じて、記録されたエラーのリストにエラーを追加するか、エラーを発生させます。
         """
         token = token or self._curr or self._prev or Token.string("")
         start = token.start
@@ -1743,14 +1793,18 @@ class Parser(metaclass=_Parser):
     ) -> E:
         """
         Creates a new, validated Expression.
+        新しい検証済みの式を作成します。
 
         Args:
             exp_class: The expression class to instantiate.
+                インスタンス化する式クラス。
             comments: An optional list of comments to attach to the expression.
+                式に添付するコメントのオプションのリスト。
             kwargs: The arguments to set for the expression along with their respective values.
+                式に設定する引数とそれぞれの値。
 
         Returns:
-            The target expression.
+            The target expression. 対象となる表現。
         """
         instance = exp_class(**kwargs)
         instance.add_comments(comments) if comments else self._add_comments(instance)
@@ -1764,13 +1818,15 @@ class Parser(metaclass=_Parser):
     def validate_expression(self, expression: E, args: t.Optional[t.List] = None) -> E:
         """
         Validates an Expression, making sure that all its mandatory arguments are set.
+        式を検証し、すべての必須引数が設定されていることを確認します。
 
         Args:
-            expression: The expression to validate.
+            expression: The expression to validate. 検証する式。
             args: An optional list of items that was used to instantiate the expression, if it's a Func.
+                Func の場合、式をインスタンス化するために使用された項目のオプションのリスト。
 
         Returns:
-            The validated expression.
+            The validated expression. 検証された式。
         """
         if self.error_level != ErrorLevel.IGNORE:
             for error_message in expression.error_messages(args):
@@ -1806,6 +1862,8 @@ class Parser(metaclass=_Parser):
 
         # We use _find_sql because self.sql may comprise multiple chunks, and we're only
         # interested in emitting a warning for the one being currently processed.
+        # self.sql は複数のチャンクで構成される可能性があり、
+        # 現在処理中のチャンクに対してのみ警告を発したいため、_find_sql を使用します。
         sql = self._find_sql(self._tokens[0], self._tokens[-1])[: self.error_message_context]
 
         logger.warning(
@@ -1826,6 +1884,9 @@ class Parser(metaclass=_Parser):
         Attemps to backtrack if a parse function that contains a try/catch internally raises an error.
         This behavior can be different depending on the uset-set ErrorLevel, so _try_parse aims to
         solve this by setting & resetting the parser state accordingly
+        try/catch を含む解析関数が内部的にエラーを発生させた場合、バックトラックを試みます。
+        この動作は、uset-set ErrorLevel によって異なる可能性があるため、
+        _try_parse は、パーサーの状態を適切に設定およびリセットすることでこの問題を解決します。
         """
         index = self._index
         error_level = self.error_level
@@ -1984,6 +2045,7 @@ class Parser(metaclass=_Parser):
 
     def _parse_create(self) -> exp.Create | exp.Command:
         # Note: this can't be None because we've matched a statement parser
+        # 注: ステートメントパーサーに一致したため、これは None にできません
         start = self._prev
 
         replace = (
@@ -2053,6 +2115,7 @@ class Parser(metaclass=_Parser):
 
                     if self._match(TokenType.STRING, advance=False):
                         # Takes care of BigQuery's JavaScript UDF definitions that end in an OPTIONS property
+                        # OPTIONSプロパティで終わるBigQueryのJavaScript UDF定義を処理します
                         # # https://cloud.google.com/bigquery/docs/reference/standard-sql/data-definition-language#create_function_statement
                         expression = self._parse_string()
                         extend_props(self._parse_properties())
@@ -2065,6 +2128,7 @@ class Parser(metaclass=_Parser):
                         expression = self.expression(exp.Return, this=expression)
         elif create_token.token_type == TokenType.INDEX:
             # Postgres allows anonymous indexes, eg. CREATE INDEX IF NOT EXISTS ON t(c)
+            # Postgresでは匿名インデックスが許可されます。例: CREATE INDEX IF NOT EXISTS ON t(c)
             if not self._match(TokenType.ON):
                 index = self._parse_id_var()
                 anonymous = False
@@ -2117,6 +2181,8 @@ class Parser(metaclass=_Parser):
 
                 # Some dialects also support using a table as an alias instead of a SELECT.
                 # Here we fallback to this as an alternative.
+                # 一部の方言では、SELECT の代わりにテーブルをエイリアスとして使用することもサポートされています。
+                # ここでは代替手段としてこれにフォールバックします。
                 if not expression and has_alias:
                     expression = self._try_parse(self._parse_table_parts)
 
@@ -2193,6 +2259,7 @@ class Parser(metaclass=_Parser):
                 seq.set("start", self._parse_term())
             elif self._match_text_seq("CACHE"):
                 # T-SQL allows empty CACHE which is initialized dynamically
+                # T-SQLでは動的に初期化される空のCACHEが許可されます
                 seq.set("cache", self._parse_number() or True)
             elif self._match_text_seq("OWNED", "BY"):
                 # "OWNED BY NONE" is the default
@@ -2262,12 +2329,14 @@ class Parser(metaclass=_Parser):
             return None
 
         # Transform the key to exp.Dot if it's dotted identifiers wrapped in exp.Column or to exp.Var otherwise
+        # キーが exp.Column で囲まれたドット付き識別子の場合は exp.Dot に変換し、それ以外の場合は exp.Var に変換します。
         if isinstance(key, exp.Column):
             key = key.to_dot() if len(key.parts) > 1 else exp.var(key.name)
 
         value = self._parse_bitwise() or self._parse_var(any_token=True)
 
         # Transform the value to exp.Var if it was parsed as exp.Column(exp.Identifier())
+        # exp.Column(exp.Identifier()) として解析された場合は、値を exp.Var に変換します。
         if isinstance(value, exp.Column):
             value = exp.var(value.name)
 
@@ -2414,6 +2483,7 @@ class Parser(metaclass=_Parser):
             kind = "RANDOM"
 
         # If the BUCKETS keyword is not present, the number of buckets is AUTO
+        # BUCKETSキーワードが存在しない場合は、バケットの数はAUTOになります。
         buckets: t.Optional[exp.Expression] = None
         if self._match_text_seq("BUCKETS") and not self._match_text_seq("AUTO"):
             buckets = self._parse_number()
@@ -3100,6 +3170,7 @@ class Parser(metaclass=_Parser):
 
     def _parse_delete(self) -> exp.Delete:
         # This handles MySQL's "Multiple-Table Syntax"
+        # これはMySQLの「複数テーブル構文」を扱います
         # https://dev.mysql.com/doc/refman/8.0/en/delete.html
         tables = None
         if not self._match(TokenType.FROM, advance=False):
@@ -3195,6 +3266,7 @@ class Parser(metaclass=_Parser):
             return self.expression(exp.Tuple, expressions=expressions)
 
         # In some dialects we can have VALUES 1, 2 which results in 1 column & 2 rows.
+        # いくつかの方言では、VALUES 1、2 が使用され、1 列と 2 行が生成されます。
         expression = self._parse_expression()
         if expression:
             return self.expression(exp.Tuple, expressions=[expression])
@@ -3211,6 +3283,7 @@ class Parser(metaclass=_Parser):
         elif self._match(TokenType.FROM):
             from_ = self._parse_from(skip_from_token=True, consume_pipe=True)
             # Support parentheses for duckdb FROM-first syntax
+            # duckdb FROM-first 構文の括弧をサポート
             select = self._parse_select(from_=from_)
             if select:
                 if not select.args.get("from"):
@@ -3227,6 +3300,8 @@ class Parser(metaclass=_Parser):
 
             # Transform exp.Values into a exp.Table to pass through parse_query_modifiers
             # in case a modifier (e.g. join) is following
+            # exp.Values を exp.Table に変換し、修飾子 (例: join) が続く場合に 
+            # parse_query_modifiers に渡します。
             if table and isinstance(this, exp.Values) and this.alias:
                 alias = this.args["alias"].pop()
                 this = exp.Table(this=this, alias=alias)
@@ -3285,6 +3360,7 @@ class Parser(metaclass=_Parser):
             return this
 
         # duckdb supports leading with FROM x
+        # duckdbはFROM xで始まることをサポート
         from_ = (
             self._parse_from(consume_pipe=True)
             if self._match(TokenType.FROM, advance=False)
@@ -3351,6 +3427,8 @@ class Parser(metaclass=_Parser):
 
             # We return early here so that the UNION isn't attached to the subquery by the
             # following call to _parse_set_operations, but instead becomes the parent node
+            # ここで早めに戻ることで、UNIONは_parse_set_operationsの次の呼び出しによって
+            # サブクエリに添付されず、代わりに親ノードになります。
             self._match_r_paren()
             return self._parse_subquery(this, parse_alias=parse_subquery_alias)
         elif self._match(TokenType.VALUES, advance=False):
@@ -3466,6 +3544,8 @@ class Parser(metaclass=_Parser):
         # In some dialects, LIMIT and OFFSET can act as both identifiers and keywords (clauses)
         # so this section tries to parse the clause version and if it fails, it treats the token
         # as an identifier (alias)
+        # いくつかの方言では、LIMITとOFFSETは識別子とキーワード（句）の両方として機能するため、
+        # このセクションでは句バージョンの解析を試み、失敗した場合はトークンを識別子（エイリアス）として扱います。
         if self._can_parse_limit_or_offset():
             return None
 
@@ -3488,6 +3568,7 @@ class Parser(metaclass=_Parser):
         table_alias = self.expression(exp.TableAlias, this=alias, columns=columns)
 
         # We bubble up comments from the Identifier to the TableAlias
+        # 識別子からTableAliasにコメントをバブルアップします
         if isinstance(alias, exp.Identifier):
             table_alias.add_comments(alias.pop_comments())
 
@@ -3524,6 +3605,8 @@ class Parser(metaclass=_Parser):
 
                     # Table.to_column creates a parent Alias node that we want to convert to
                     # a TableAlias and attach to the Unnest, so it matches the parser's output
+                    # Table.to_columnは親Aliasノードを作成し、これをTableAliasに変換して
+                    # Unnestにアタッチし、パーサーの出力と一致させます。
                     if isinstance(table.args.get("alias"), exp.TableAlias):
                         table_as_column.replace(table_as_column.this)
                         exp.alias_(unnest, None, table=[table.args["alias"].this], copy=False)
@@ -4017,6 +4100,7 @@ class Parser(metaclass=_Parser):
         while self._match(TokenType.DOT):
             if catalog:
                 # This allows nesting the table in arbitrarily many dot expressions if needed
+                # これにより、必要に応じて任意の数のドット式でテーブルをネストすることができます。
                 table = self.expression(
                     exp.Dot, this=table, expression=self._parse_table_part(schema=schema)
                 )
@@ -4038,6 +4122,7 @@ class Parser(metaclass=_Parser):
                 table = exp.Identifier(this="*")
 
         # We bubble up comments from the Identifier to the Table
+        # 識別子からテーブルにコメントをバブルアップします
         comments = table.pop_comments() if isinstance(table, exp.Expression) else None
 
         if is_db_reference:
@@ -4123,6 +4208,8 @@ class Parser(metaclass=_Parser):
             this.set("only", only)
 
         # Postgres supports a wildcard (table) suffix operator, which is a no-op in this context
+        # Postgresはワイルドカード（テーブル）サフィックス演算子をサポートしていますが、
+        # このコンテキストでは何も実行されません。
         self._match_text_seq("*")
 
         parse_partition = parse_partition or self.SUPPORTS_PARTITION_SELECTION
@@ -4501,6 +4588,7 @@ class Parser(metaclass=_Parser):
                 pivot_field_expressions = pivot_field.expressions
 
                 # The `PivotAny` expression corresponds to `ANY ORDER BY <column>`; we can't infer in this case.
+                # `PivotAny` 式は `ANY ORDER BY <column>` に対応しますが、この場合は推論できません。
                 if isinstance(seq_get(pivot_field_expressions, 0), exp.PivotAny):
                     continue
 
@@ -4518,11 +4606,15 @@ class Parser(metaclass=_Parser):
                 # Generate all possible combinations of the pivot columns
                 # e.g PIVOT(sum(...) as total FOR year IN (2000, 2010) FOR country IN ('NL', 'US'))
                 # generates the product between [[2000, 2010], ['NL', 'US'], ['total']]
+                # ピボット列のすべての可能な組み合わせを生成します。
+                # 例：PIVOT(sum(...) as total FOR year IN (2000, 2010) FOR country IN ('NL', 'US')) は、
+                # [[2000, 2010], ['NL', 'US'], ['total']] の積を生成します。
                 for fld_parts_tuple in itertools.product(*all_fields):
                     fld_parts = list(fld_parts_tuple)
 
                     if names and self.PREFIXED_PIVOT_COLUMNS:
                         # Move the "name" to the front of the list
+                        # "name" をリストの先頭に移動する
                         fld_parts.insert(0, fld_parts.pop(-1))
 
                     columns.append(exp.to_identifier("_".join(fld_parts)))
@@ -4988,6 +5080,7 @@ class Parser(metaclass=_Parser):
             this = self.expression(exp.Is, this=this, expression=exp.Null())
 
         # Postgres supports ISNULL and NOTNULL for conditions.
+        # Postgres は条件として ISNULL と NOTNULL をサポートしています。
         # https://blog.andreiavram.ro/postgresql-null-composite-type/
         if self._match(TokenType.NOTNULL):
             this = self.expression(exp.Is, this=this, expression=exp.Null())
@@ -5112,12 +5205,15 @@ class Parser(metaclass=_Parser):
 
         # Most dialects support, e.g., the form INTERVAL '5' day, thus we try to parse
         # each INTERVAL expression into this canonical form so it's easy to transpile
+        # ほとんどの方言は、例えばINTERVAL '5' dayという形式をサポートしているので、
+        # 各INTERVAL式をこの標準形式に解析して簡単にトランスパイルできるようにしています。
         if this and this.is_number:
             this = exp.Literal.string(this.to_py())
         elif this and this.is_string:
             parts = exp.INTERVAL_STRING_RE.findall(this.name)
             if parts and unit:
                 # Unconsume the eagerly-parsed unit, since the real unit was part of the string
+                # 実際の単位は文字列の一部であるため、積極的に解析された単位を消費しない
                 unit = None
                 self._retreat(self._index - 1)
 
@@ -5135,6 +5231,7 @@ class Parser(metaclass=_Parser):
         self._match(TokenType.PLUS)
 
         # Convert INTERVAL 'val_1' unit_1 [+] ... [+] 'val_n' unit_n into a sum of intervals
+        # INTERVAL 'val_1' unit_1 [+] ... [+] 'val_n' unit_n を間隔の合計に変換します
         if self._match_set((TokenType.STRING, TokenType.NUMBER), advance=False):
             return self.expression(
                 exp.Add, this=interval, expression=self._parse_interval(match_interval=False)
@@ -5192,6 +5289,8 @@ class Parser(metaclass=_Parser):
 
                 # Preserve collations such as pg_catalog."default" (Postgres) as columns, otherwise
                 # fallback to Identifier / Var
+                # pg_catalog."default" (Postgres) などの照合順序を列として保持し、
+                # それ以外の場合は識別子/変数にフォールバックします。
                 if isinstance(expr, exp.Column) and len(expr.parts) == 1:
                     ident = expr.this
                     if isinstance(ident, exp.Identifier):
@@ -5240,8 +5339,11 @@ class Parser(metaclass=_Parser):
 
         # parse_types() returns a Cast if we parsed BQ's inline constructor <type>(<values>) e.g.
         # STRUCT<a INT, b STRING>(1, 'foo'), which is canonicalized to CAST(<values> AS <type>)
+        # parse_types() は、BQ のインライン コンストラクタ <type>(<values>) を解析した場合、キャストを返します。
+        # たとえば、STRUCT<a INT, b STRING>(1, 'foo') は、CAST(<values> AS <type>) に正規化されます。
         if isinstance(data_type, exp.Cast):
             # This constructor can contain ops directly after it, for instance struct unnesting:
+            # このコンストラクタは、その直後にオペレーションを含めることができます。たとえば、構造体のネスト解除: 
             # STRUCT<a INT, b STRING>(1, 'foo').* --> CAST(STRUCT(1, 'foo') AS STRUCT<a iNT, b STRING).*
             return self._parse_column_ops(data_type)
 
@@ -5279,6 +5381,20 @@ class Parser(metaclass=_Parser):
             #
             # In these cases, we don't really want to return the converted type, but instead retreat
             # and try to parse a Column or Identifier in the section below.
+
+            # 入力SQLにDECIMAL(38, 0)のような値が含まれている場合、式引数はパーサーによって設定されます。
+            # この場合、以下のトークンが生成されます：DECIMAL ( 38 , 0 )
+            #
+            # ここでのインデックス差が1より大きい場合、パーサー自体が上記の例のDECIMALのスケールや精度などの
+            # 追加トークンを使用していることを意味します。
+            #
+            # 1より大きくない場合は、少なくともtypeキーワードを使用しているため、1である必要があります。
+            # つまり、データ型の式引数は、TYPE_CONVERTERSマッピングの呼び出し可能オブジェクトによって
+            # 設定されている必要があります。例えば、Snowflakeはデータ型のトランスパイルを容易にするために、
+            # DECIMALをDECIMAL(38, 0)に変換します。
+            #
+            # このような場合、実際には変換された型を返すのではなく、代わりに以下のセクションの列または識別子を
+            # 解析しようとします。
             if data_type.expressions and index2 - index > 1:
                 self._retreat(index2)
                 return self._parse_column_ops(data_type)
@@ -5512,6 +5628,7 @@ class Parser(metaclass=_Parser):
         index = self._index
 
         # Postgres supports the INT ARRAY[3] syntax as a synonym for INT[3]
+        # PostgresはINT[3]の同義語としてINT ARRAY[3]構文をサポートしています。
         matched_array = self._match(TokenType.ARRAY)
 
         while self._curr:
@@ -5523,6 +5640,8 @@ class Parser(metaclass=_Parser):
             ):
                 # Postgres allows casting empty arrays such as ARRAY[]::INT[],
                 # not to be confused with the fixed size array parsing
+                # Postgresでは、ARRAY[]::INT[]のような空の配列のキャストが可能です。
+                # 固定サイズの配列解析と混同しないでください。
                 break
 
             matched_array = False
@@ -5536,6 +5655,9 @@ class Parser(metaclass=_Parser):
             ):
                 # Retreating here means that we should not parse the following values as part of the data type, e.g. in DuckDB
                 # ARRAY[1] should retreat and instead be parsed into exp.Array in contrast to INT[x][y] which denotes a fixed-size array data type
+                # ここで後退するということは、次の値をデータ型の一部として解析すべきではないことを意味します。
+                # 例えば、DuckDBではARRAY[1]は後退し、代わりにexp.Arrayに解析する必要があります。
+                # 一方、INT[x][y]は固定サイズの配列データ型を表します。
                 self._retreat(index)
                 break
 
@@ -5567,6 +5689,8 @@ class Parser(metaclass=_Parser):
         ):
             # Takes care of special cases like `STRUCT<list ARRAY<...>>` where the identifier is also a
             # type token. Without this, the list will be parsed as a type and we'll eventually crash
+            # `STRUCT<list ARRAY<...>>` のような、識別子が型トークンでもある特殊なケースに対応します。
+            # これがないと、リストは型として解析され、最終的にはクラッシュします。
             this = self._parse_id_var()
         else:
             this = (
@@ -5612,6 +5736,7 @@ class Parser(metaclass=_Parser):
 
         if isinstance(this, exp.Identifier):
             # We bubble up comments from the Identifier to the Column
+            # 識別子から列にコメントをバブルアップします
             this = self.expression(exp.Column, comments=this.pop_comments(), this=this)
 
         return this
@@ -5627,12 +5752,16 @@ class Parser(metaclass=_Parser):
             start_index = self._index
 
             # Snowflake allows reserved keywords as json keys but advance_any() excludes TokenType.SELECT from any_tokens=True
+            # Snowflake では予約キーワードを JSON キーとして使用できますが、
+            # advance_any() は any_tokens=True から TokenType.SELECT を除外します。
             path = self._parse_column_ops(
                 self._parse_field(any_token=True, tokens=(TokenType.SELECT,))
             )
 
             # The cast :: operator has a lower precedence than the extraction operator :, so
             # we rearrange the AST appropriately to avoid casting the JSON path
+            # キャスト::演算子は抽出演算子:よりも優先順位が低いため、
+            # JSONパスのキャストを避けるためにASTを適切に並べ替えます。
             while isinstance(path, exp.Cast):
                 casts.append(path.to)
                 path = path.this
@@ -5650,6 +5779,8 @@ class Parser(metaclass=_Parser):
             if path:
                 # Escape single quotes from Snowflake's colon extraction (e.g. col:"a'b") as
                 # it'll roundtrip to a string literal in GET_PATH
+                # Snowflakeのコロン抽出からシングルクォートをエスケープします（例：col:"a'b"）。
+                # GET_PATHの文字列リテラルにラウンドトリップします。
                 if isinstance(path, exp.Identifier) and path.quoted:
                     escape = True
 
@@ -5657,6 +5788,8 @@ class Parser(metaclass=_Parser):
 
         # The VARIANT extract in Snowflake/Databricks is parsed as a JSONExtract; Snowflake uses the json_path in GET_PATH() while
         # Databricks transforms it back to the colon/dot notation
+        # Snowflake/DatabricksのVARIANT抽出はJSONExtractとして解析されます。
+        # SnowflakeはGET_PATH()でjson_pathを使用しますが、Databricksはそれをコロン/ドット表記に戻します。
         if json_path:
             json_path_expr = self.dialect.to_json_path(exp.Literal.string(".".join(json_path)))
 
@@ -5699,6 +5832,8 @@ class Parser(metaclass=_Parser):
 
             # Function calls can be qualified, e.g., x.y.FOO()
             # This converts the final AST to a series of Dots leading to the function call
+            # 関数呼び出しは修飾子で囲むことができます（例：x.y.FOO()）。
+            # これにより、最終的な AST が関数呼び出しにつながる一連のドットに変換されます。
             # https://cloud.google.com/bigquery/docs/reference/standard-sql/functions-reference#function_call_rules
             if isinstance(field, (exp.Func, exp.Window)) and this:
                 this = this.transform(
@@ -5718,6 +5853,7 @@ class Parser(metaclass=_Parser):
                 )
             elif isinstance(field, exp.Window):
                 # Move the exp.Dot's to the window's function
+                # exp.Dotをwindowの関数に移動する
                 window_func = self.expression(exp.Dot, this=this, expression=field.this)
                 field.set("this", window_func)
                 this = field
@@ -5807,6 +5943,7 @@ class Parser(metaclass=_Parser):
         any_token: bool = False,
     ) -> t.Optional[exp.Expression]:
         # This allows us to also parse {fn <function>} syntax (Snowflake, MySQL support this)
+        # これにより、{fn <function>}構文も解析できるようになります（Snowflake、MySQLはこれをサポートしています）
         # See: https://community.snowflake.com/s/article/SQL-Escape-Sequences
         fn_syntax = False
         if (
@@ -5883,6 +6020,8 @@ class Parser(metaclass=_Parser):
                 elif prev and prev.token_type in (TokenType.LIKE, TokenType.ILIKE):
                     # Backtrack one token since we've consumed the L_PAREN here. Instead, we'd like
                     # to parse "LIKE [ANY | ALL] (...)" as a whole into an exp.Tuple or exp.Paren
+                    # ここでL_PARENを消費したので、1トークン分バックトラックします。
+                    # 代わりに、「LIKE [ANY | ALL] (...)」全体をexp.Tupleまたはexp.Parenに解析します。
                     self._advance(-1)
                     expr = self._parse_bitwise()
 
@@ -5902,6 +6041,8 @@ class Parser(metaclass=_Parser):
             if known_function and post_func_comments:
                 # If the user-inputted comment "/* sqlglot.anonymous */" is following the function
                 # call we'll construct it as exp.Anonymous, even if it's "known"
+                # 関数呼び出しの後にユーザーが入力したコメント「/* sqlglot.anonymous */」が続く場合、
+                # それが「既知」であっても、exp.Anonymousとして構築されます。
                 if any(
                     comment.lstrip().startswith(exp.SQLGLOT_ANONYMOUS)
                     for comment in post_func_comments
@@ -6044,6 +6185,8 @@ class Parser(metaclass=_Parser):
 
         # Disambiguate between schema and subquery/CTE, e.g. in INSERT INTO table (<expr>),
         # expr can be of both types
+        # スキーマとサブクエリ/CTEの曖昧さを解消します。
+        # たとえば、INSERT INTO table (<expr>) では、expr は両方の型になることができます。
         if self._match_set(self.SELECT_START_TOKENS):
             self._retreat(index)
             return this
@@ -6058,6 +6201,7 @@ class Parser(metaclass=_Parser):
         self, this: t.Optional[exp.Expression], computed_column: bool = True
     ) -> t.Optional[exp.Expression]:
         # column defs are not really columns, they're identifiers
+        # 列定義は実際には列ではなく、識別子です
         if isinstance(this, exp.Column):
             this = this.this
 
@@ -6417,6 +6561,8 @@ class Parser(metaclass=_Parser):
         Parses a datetime column in ODBC format. We parse the column into the corresponding
         types, for example `{d'yyyy-mm-dd'}` will be parsed as a `Date` column, exactly the
         same as we did for `DATE('yyyy-mm-dd')`.
+        ODBC形式の日付時刻列を解析します。列を対応する型に解析します。例えば、`{d'yyyy-mm-dd'}`は
+        `Date`列として解析されます。これは`DATE('yyyy-mm-dd')`の場合と全く同じです。
 
         Reference:
         https://learn.microsoft.com/en-us/sql/odbc/reference/develop-app/date-time-and-timestamp-literals
@@ -6674,17 +6820,22 @@ class Parser(metaclass=_Parser):
             # postgres: STRING_AGG([DISTINCT] expression, separator [ORDER BY expression1 {ASC | DESC} [, ...]])
             # bigquery: STRING_AGG([DISTINCT] expression [, separator] [ORDER BY key [{ASC | DESC}] [, ... ]] [LIMIT n])
             # The order is parsed through `this` as a canonicalization for WITHIN GROUPs
+            # 順序はWITHIN GROUPの正規化として`this`を通じて解析されます。
             args[0] = self._parse_limit(this=self._parse_order(this=args[0]))
             return self.expression(exp.GroupConcat, this=args[0], separator=seq_get(args, 1))
 
         # Checks if we can parse an order clause: WITHIN GROUP (ORDER BY <order_by_expression_list> [ASC | DESC]).
         # This is done "manually", instead of letting _parse_window parse it into an exp.WithinGroup node, so that
         # the STRING_AGG call is parsed like in MySQL / SQLite and can thus be transpiled more easily to them.
+        # 順序句を解析できるかどうかを確認します: WITHIN GROUP (ORDER BY <order_by_expression_list> [ASC | DESC]).
+        # これは、_parse_window に exp.WithinGroup ノードに解析させるのではなく、「手動で」行われます。
+        # これにより、STRING_AGG 呼び出しは MySQL / SQLite のように解析され、より簡単にそれらにトランスパイルできるようになります。
         if not self._match_text_seq("WITHIN", "GROUP"):
             self._retreat(index)
             return self.validate_expression(exp.GroupConcat.from_arg_list(args), args)
 
         # The corresponding match_r_paren will be called in parse_function (caller)
+        # 対応するmatch_r_parenはparse_function（呼び出し元）で呼び出されます。
         self._match_l_paren()
 
         return self.expression(
@@ -6723,6 +6874,7 @@ class Parser(metaclass=_Parser):
 
         if self._match_text_seq("PASSING"):
             # The BY VALUE keywords are optional and are provided for semantic clarity
+            # BY VALUEキーワードはオプションであり、意味を明確にするために提供されています。
             self._match_text_seq("BY", "VALUE")
             passing = self._parse_csv(self._parse_column)
 
@@ -6781,6 +6933,8 @@ class Parser(metaclass=_Parser):
 
     def _parse_on_condition(self) -> t.Optional[exp.OnCondition]:
         # MySQL uses "X ON EMPTY Y ON ERROR" (e.g. JSON_VALUE) while Oracle uses the opposite (e.g. JSON_EXISTS)
+        # MySQLでは「X ON EMPTY Y ON ERROR」（例：JSON_VALUE）を使用しますが、
+        # Oracleではその逆（例：JSON_EXISTS）を使用します。
         if self.dialect.ON_CONDITION_EMPTY_BEFORE_ERROR:
             empty = self._parse_on_handling("EMPTY", *self.ON_CONDITION_TOKENS)
             error = self._parse_on_handling("ERROR", *self.ON_CONDITION_TOKENS)
@@ -6804,6 +6958,7 @@ class Parser(metaclass=_Parser):
         self, on: str, *values: str
     ) -> t.Optional[str] | t.Optional[exp.Expression]:
         # Parses the "X ON Y" or "DEFAULT <expr> ON Y syntax, e.g. NULL ON NULL (Oracle, T-SQL, MySQL)
+        # 「X ON Y」または「DEFAULT <expr> ON Y」構文を解析します。例: NULL ON NULL (Oracle、T-SQL、MySQL)
         for value in values:
             if self._match_text_seq(value, "ON", on):
                 return f"{value} ON {on}"
@@ -6856,6 +7011,7 @@ class Parser(metaclass=_Parser):
         )
 
     # Note: this is currently incomplete; it only implements the "JSON_value_column" part
+    # 注: これは現在不完全であり、「JSON_value_column」部分のみを実装しています。
     def _parse_json_column_def(self) -> exp.JSONColumnDef:
         if not self._match_text_seq("NESTED"):
             this = self._parse_id_var()
@@ -6977,6 +7133,8 @@ class Parser(metaclass=_Parser):
     def _parse_substring(self) -> exp.Substring:
         # Postgres supports the form: substring(string [from int] [for int])
         # (despite being undocumented, the reverse order also works)
+        # Postgres は次の形式をサポートしています: substring(string [from int] [for int])
+        # (ドキュメントには記載されていませんが、逆順でも動作します)
         # https://www.postgresql.org/docs/9.1/functions-string.html @ Table 9-6
 
         args = t.cast(t.List[t.Optional[exp.Expression]], self._parse_csv(self._parse_bitwise))
@@ -7072,12 +7230,16 @@ class Parser(metaclass=_Parser):
 
         # SQL spec defines an optional [ { IGNORE | RESPECT } NULLS ] OVER
         # Some dialects choose to implement and some do not.
+        # SQL仕様では、オプションの[{IGNORE | RESPECT}NULLS]OVERが定義されています。
+        # 一部の方言では実装されますが、実装されない方言もあります。
         # https://dev.mysql.com/doc/refman/8.0/en/window-function-descriptions.html
 
         # There is some code above in _parse_lambda that handles
+        # 上記の_parse_lambdaには、次のようなコードがあります。
         #   SELECT FIRST_VALUE(TABLE.COLUMN IGNORE|RESPECT NULLS) OVER ...
 
         # The below changes handle
+        # 以下の変更は処理されます
         #   SELECT FIRST_VALUE(TABLE.COLUMN) IGNORE|RESPECT NULLS OVER ...
 
         # Oracle allows both formats
@@ -7189,6 +7351,8 @@ class Parser(metaclass=_Parser):
         # In some dialects, LIMIT and OFFSET can act as both identifiers and keywords (clauses)
         # so this section tries to parse the clause version and if it fails, it treats the token
         # as an identifier (alias)
+        # いくつかの方言では、LIMITとOFFSETは識別子とキーワード（句）の両方として機能するため、
+        # このセクションでは句バージョンの解析を試み、失敗した場合はトークンを識別子（エイリアス）として扱います。
         if self._can_parse_limit_or_offset():
             return this
 
@@ -7218,6 +7382,7 @@ class Parser(metaclass=_Parser):
             column = this.this
 
             # Moves the comment next to the alias in `expr /* comment */ AS alias`
+            # `expr /* comment */ AS alias` 内のコメントをエイリアスの隣に移動します
             if not this.comments and column and column.comments:
                 this.comments = column.pop_comments()
 
@@ -7523,6 +7688,8 @@ class Parser(metaclass=_Parser):
 
         # Many dialects support the ALTER [COLUMN] syntax, so if there is no
         # keyword after ALTER we default to parsing this statement
+        # 多くの方言はALTER [COLUMN]構文をサポートしているので、
+        # ALTERの後にキーワードがない場合、デフォルトでこの文を解析します。
         self._match(TokenType.COLUMN)
         column = self._parse_field(any_token=True)
 
@@ -7728,6 +7895,7 @@ class Parser(metaclass=_Parser):
         elif self._match_text_seq("CLUSTER"):
             this = self._parse_table()
         # Try matching inner expr keywords before fallback to parse table.
+        # フォールバックしてテーブルを解析する前に、内部の expr キーワードの一致を試みます。
         elif self._match_texts(self.ANALYZE_EXPRESSION_PARSERS):
             kind = None
             inner_expression = self.ANALYZE_EXPRESSION_PARSERS[self._prev.text.upper()](self)
@@ -8142,6 +8310,7 @@ class Parser(metaclass=_Parser):
         this = []
         while True:
             # The current token might be multiple words
+            # 現在のトークンは複数の単語である可能性があります
             curr = self._curr.text.upper()
             key = curr.split(" ")
             this.append(curr)
@@ -8267,11 +8436,13 @@ class Parser(metaclass=_Parser):
         start = self._prev
 
         # Not to be confused with TRUNCATE(number, decimals) function call
+        # TRUNCATE(数値, 小数点)関数呼び出しと混同しないでください。
         if self._match(TokenType.L_PAREN):
             self._retreat(self._index - 2)
             return self._parse_function()
 
         # Clickhouse supports TRUNCATE DATABASE as well
+        # ClickhouseはTRUNCATE DATABASEもサポートしています
         is_database = self._match(TokenType.DATABASE)
 
         self._match(TokenType.TABLE)
@@ -8332,6 +8503,7 @@ class Parser(metaclass=_Parser):
         while self._curr and not self._match(TokenType.R_PAREN):
             if self._match_text_seq("FORMAT_NAME", "="):
                 # The FORMAT_NAME can be set to an identifier for Snowflake and T-SQL
+                # FORMAT_NAMEはSnowflakeとT-SQLの識別子に設定できます。
                 option = self._parse_format_name()
             else:
                 option = self._parse_property()
@@ -8353,6 +8525,7 @@ class Parser(metaclass=_Parser):
             prev = self._prev.text.upper()
 
             # Different dialects might separate options and values by white space, "=" and "AS"
+            # 方言によっては、オプションと値を空白、「=」、「AS」で区切る場合があります。
             self._match(TokenType.EQ)
             self._match(TokenType.ALIAS)
 
@@ -8415,6 +8588,9 @@ class Parser(metaclass=_Parser):
             # Backtrack one token since we've consumed the lhs of a parameter assignment here.
             # This can happen for Snowflake dialect. Instead, we'd like to parse the parameter
             # list via `_parse_wrapped(..)` below.
+            # ここでパラメータ代入の左辺を消費しているので、1トークン分バックトラックします。
+            # これはSnowflake方言で発生する可能性があります。
+            # 代わりに、以下の`_parse_wrapped(..)`を使ってパラメータリストを解析します。
             self._advance(-1)
             files = []
 
@@ -8477,6 +8653,8 @@ class Parser(metaclass=_Parser):
 
         # Keep consuming consecutive keywords until comma (end of this privilege) or ON
         # (end of privilege list) or L_PAREN (start of column list) are met
+        # カンマ（この権限の終わり）または ON（権限リストの終わり）または 
+        # L_PAREN（列リストの開始）に達するまで、連続するキーワードを消費し続けます。
         while self._curr and not self._match_set(self.PRIVILEGE_FOLLOW_TOKENS, advance=False):
             privilege_parts.append(self._curr.text.upper())
             self._advance()
@@ -8509,6 +8687,8 @@ class Parser(metaclass=_Parser):
 
         # Attempt to parse the securable e.g. MySQL allows names
         # such as "foo.*", "*.*" which are not easily parseable yet
+        # セキュリティ保護可能なものを解析しようとします。たとえば、MySQL では
+        # 「foo.*」、「*.*」など、まだ簡単に解析できない名前が許可されます。
         securable = self._try_parse(self._parse_table_parts)
 
         return privileges, kind, securable
@@ -8580,6 +8760,8 @@ class Parser(metaclass=_Parser):
     def _parse_format_name(self) -> exp.Property:
         # Note: Although not specified in the docs, Snowflake does accept a string/identifier
         # for FILE_FORMAT = <format_name>
+        # 注: ドキュメントでは指定されていませんが、
+        # SnowflakeはFILE_FORMAT = <format_name>の文字列/識別子を受け入れます。
         return self.expression(
             exp.Property,
             this=exp.var("FORMAT_NAME"),
@@ -8786,6 +8968,10 @@ class Parser(metaclass=_Parser):
                 # keywords, making it tricky to disambiguate them without lookahead. The approach
                 # here is to try and parse a set operation and if that fails, then try to parse a
                 # join operator. If that fails as well, then the operator is not supported.
+                # 集合演算子（UNIONなど）とJOIN演算子には共通の開始キーワードがいくつかあるため、
+                # 先読みなしではそれらの曖昧さを解消するのが困難です。ここでのアプローチは、
+                # 集合演算の解析を試み、それが失敗した場合は結合演算子の解析を試みるというものです。
+                # それも失敗した場合、その演算子はサポートされていません。
                 parsed_query = self._parse_pipe_syntax_set_operator(query)
                 parsed_query = parsed_query or self._parse_pipe_syntax_join(query)
                 if not parsed_query:
@@ -8864,6 +9050,8 @@ class Parser(metaclass=_Parser):
             if order:
                 # Order By is the last (or only) expression in the list and has consumed the 'expr' before it,
                 # remove 'expr' from exp.Order and add it back to args
+                # Order By がリスト内の最後の（または唯一の）式であり、その前に 'expr' を
+                # 消費している場合は、exp.Order から 'expr' を削除し、args に追加し直します。
                 args[-1] = order.this
                 order.set("this", concat_exprs(order.this, args))
 

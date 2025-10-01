@@ -72,14 +72,19 @@ pretty = False
 def tokenize(sql: str, read: DialectType = None, dialect: DialectType = None) -> t.List[Token]:
     """
     Tokenizes the given SQL string.
+    指定された SQL 文字列をトークン化します。
 
     Args:
         sql: the SQL code string to tokenize.
+            トークン化する SQL コード文字列。
         read: the SQL dialect to apply during tokenizing (eg. "spark", "hive", "presto", "mysql").
+            トークン化中に適用する SQL 方言 (例: "spark"、"hive"、"presto"、"mysql")。
         dialect: the SQL dialect (alias for read).
+            SQL 方言 (read の別名)。
 
     Returns:
         The resulting list of tokens.
+        結果として得られるトークンのリスト。
     """
     return Dialect.get_or_raise(read or dialect).tokenize(sql)
 
@@ -89,15 +94,21 @@ def parse(
 ) -> t.List[t.Optional[Expression]]:
     """
     Parses the given SQL string into a collection of syntax trees, one per parsed SQL statement.
+    指定された SQL 文字列を解析し、解析された SQL ステートメントごとに 1 つの構文ツリーのコレクションを作成します。
 
     Args:
         sql: the SQL code string to parse.
+            解析する SQL コード文字列。
         read: the SQL dialect to apply during parsing (eg. "spark", "hive", "presto", "mysql").
+            トークン化中に適用する SQL 方言 (例: "spark"、"hive"、"presto"、"mysql")。
         dialect: the SQL dialect (alias for read).
+            SQL 方言 (read の別名)。
         **opts: other `sqlglot.parser.Parser` options.
+            その他の `sqlglot.parser.Parser` オプション。
 
     Returns:
         The resulting syntax tree collection.
+        結果の構文ツリー コレクション。
     """
     return Dialect.get_or_raise(read or dialect).parse(sql, **opts)
 
@@ -119,16 +130,23 @@ def parse_one(
 ) -> Expression:
     """
     Parses the given SQL string and returns a syntax tree for the first parsed SQL statement.
+    指定された SQL 文字列を解析し、最初に解析された SQL ステートメントの構文ツリーを返します。
 
     Args:
         sql: the SQL code string to parse.
+            解析する SQL コード文字列。
         read: the SQL dialect to apply during parsing (eg. "spark", "hive", "presto", "mysql").
+            トークン化中に適用する SQL 方言 (例: "spark"、"hive"、"presto"、"mysql")。
         dialect: the SQL dialect (alias for read)
+            SQL 方言 (read の別名)。
         into: the SQLGlot Expression to parse into.
+            解析する SQLGlot 式。
         **opts: other `sqlglot.parser.Parser` options.
+            その他の `sqlglot.parser.Parser` オプション。
 
     Returns:
         The syntax tree for the first parsed statement.
+        最初に解析されたステートメントの構文ツリー。
     """
 
     dialect = Dialect.get_or_raise(read or dialect)
@@ -157,18 +175,27 @@ def transpile(
     """
     Parses the given SQL string in accordance with the source dialect and returns a list of SQL strings transformed
     to conform to the target dialect. Each string in the returned list represents a single transformed SQL statement.
+    指定されたSQL文字列をソース方言に従って解析し、ターゲット方言に適合するように変換されたSQL文字列のリストを返します。
+    返されるリスト内の各文字列は、変換された単一のSQL文を表します。
 
     Args:
         sql: the SQL code string to transpile.
+            トランスパイルする SQL コード文字列。
         read: the source dialect used to parse the input string (eg. "spark", "hive", "presto", "mysql").
+            入力文字列を解析するために使用されるソース方言 (例: "spark"、"hive"、"presto"、"mysql")。
         write: the target dialect into which the input should be transformed (eg. "spark", "hive", "presto", "mysql").
+            入力を変換するターゲット方言 (例: "spark"、"hive"、"presto"、"mysql")。
         identity: if set to `True` and if the target dialect is not specified the source dialect will be used as both:
             the source and the target dialect.
+            `True` に設定され、ターゲット方言が指定されていない場合は、ソース方言がソース方言とターゲット方言の両方として使用されます。
         error_level: the desired error level of the parser.
+            パーサーの望ましいエラー レベル。
         **opts: other `sqlglot.generator.Generator` options.
+            その他の `sqlglot.generator.Generator` オプション。
 
     Returns:
         The list of transpiled SQL statements.
+        トランスパイルされた SQL ステートメントのリスト。
     """
     write = (read if write is None else write) if identity else write
     write = Dialect.get_or_raise(write)

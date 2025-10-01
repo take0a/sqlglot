@@ -29,6 +29,8 @@ class AutoName(Enum):
     """
     This is used for creating Enum classes where `auto()` is the string form
     of the corresponding enum's identifier (e.g. FOO.value results in "FOO").
+    これは、`auto()` が対応する列挙型の識別子の文字列形式である Enum クラスを
+    作成するために使用されます (例: FOO.value の結果は "FOO" になります)。
 
     Reference: https://docs.python.org/3/howto/enum.html#using-automatic-values
     """
@@ -40,6 +42,7 @@ class AutoName(Enum):
 class classproperty(property):
     """
     Similar to a normal property but works for class methods
+    通常のプロパティに似ていますが、クラスメソッドで機能します
     """
 
     def __get__(self, obj: t.Any, owner: t.Any = None) -> t.Any:

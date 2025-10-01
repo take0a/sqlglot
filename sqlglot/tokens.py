@@ -643,6 +643,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "@": TokenType.PARAMETER,
         "#": TokenType.HASH,
         # Used for breaking a var like x'y' but nothing else the token type doesn't matter
+        # x'y'のような変数を分割するために使用されますが、それ以外はトークンタイプは関係ありません
         "'": TokenType.UNKNOWN,
         "`": TokenType.UNKNOWN,
         '"': TokenType.UNKNOWN,
@@ -662,15 +663,21 @@ class Tokenizer(metaclass=_Tokenizer):
     # The strings in this list can always be used as escapes, regardless of the surrounding
     # identifier delimiters. By default, the closing delimiter is assumed to also act as an
     # identifier escape, e.g. if we use double-quotes, then they also act as escapes: "x"""
+    # このリスト内の文字列は、周囲の識別子の区切り文字に関係なく、常にエスケープとして使用できます。
+    # デフォルトでは、失われた区切り文字は識別子のエスケープとしても機能すると想定されます。
+    # 例えば、二重引用符を使用した場合、二重引用符もエスケープとして機能します："x"""
     IDENTIFIER_ESCAPES: t.List[str] = []
 
     # Whether the heredoc tags follow the same lexical rules as unquoted identifiers
+    # ヒアドキュメントタグが引用符で囲まれていない識別子と同じ語彙規則に従うかどうか
     HEREDOC_TAG_IS_IDENTIFIER = False
 
     # Token that we'll generate as a fallback if the heredoc prefix doesn't correspond to a heredoc
+    # ヒアドキュメントプレフィックスがヒアドキュメントに対応しない場合にフォールバックとして生成するトークン
     HEREDOC_STRING_ALTERNATIVE = TokenType.VAR
 
     # Whether string escape characters function as such when placed within raw strings
+    # 文字列エスケープ文字が生の文字列内に配置されたときにそのように機能するかどうか
     STRING_ESCAPES_ALLOWED_IN_RAW_STRINGS = True
 
     NESTED_COMMENTS = True
@@ -1009,6 +1016,7 @@ class Tokenizer(metaclass=_Tokenizer):
     COMMAND_PREFIX_TOKENS = {TokenType.SEMICOLON, TokenType.BEGIN}
 
     # Handle numeric literals like in hive (3L = BIGINT)
+    # Hive のように数値リテラルを処理する (3L = BIGINT)
     NUMERIC_LITERALS: t.Dict[str, str] = {}
 
     COMMENTS = ["--", ("/*", "*/")]
@@ -1042,6 +1050,7 @@ class Tokenizer(metaclass=_Tokenizer):
         self.dialect = Dialect.get_or_raise(dialect)
 
         # initialize `use_rs_tokenizer`, and allow it to be overwritten per Tokenizer instance
+        # `use_rs_tokenizer` を初期化し、Tokenizer インスタンスごとに上書きできるようにします。
         self.use_rs_tokenizer = (
             use_rs_tokenizer if use_rs_tokenizer is not None else USE_RS_TOKENIZER
         )
@@ -1071,7 +1080,8 @@ class Tokenizer(metaclass=_Tokenizer):
         self._prev_token_line = -1
 
     def tokenize(self, sql: str) -> t.List[Token]:
-        """Returns a list of tokens corresponding to the SQL string `sql`."""
+        """Returns a list of tokens corresponding to the SQL string `sql`.
+        SQL 文字列 `sql` に対応するトークンのリストを返します。"""
         if self.use_rs_tokenizer:
             return self.tokenize_rs(sql)
 
@@ -1094,6 +1104,7 @@ class Tokenizer(metaclass=_Tokenizer):
             current = self._current
 
             # Skip spaces here rather than iteratively calling advance() for performance reasons
+            # パフォーマンス上の理由から、advance() を繰り返し呼び出すのではなく、ここでスペースをスキップします。
             while current < self.size:
                 char = self.sql[current]
 
@@ -1133,6 +1144,7 @@ class Tokenizer(metaclass=_Tokenizer):
     def _advance(self, i: int = 1, alnum: bool = False) -> None:
         if self.WHITE_SPACE.get(self._char) is TokenType.BREAK:
             # Ensures we don't count an extra line if we get a \r\n line break sequence
+            # \r\n 改行シーケンスを取得した場合に余分な行をカウントしないようにします
             if not (self._char == "\r" and self._peek == "\n"):
                 self._col = i
                 self._line += 1
@@ -1146,6 +1158,7 @@ class Tokenizer(metaclass=_Tokenizer):
 
         if alnum and self._char.isalnum():
             # Here we use local variables instead of attributes for better performance
+            # ここでは、パフォーマンス向上のため、属性の代わりにローカル変数を使用します。
             _col = self._col
             _current = self._current
             _end = self._end
@@ -1189,6 +1202,8 @@ class Tokenizer(metaclass=_Tokenizer):
 
         # If we have either a semicolon or a begin token before the command's token, we'll parse
         # whatever follows the command's token as a string
+        # コマンドトークンの前にセミコロンまたは開始トークンがある場合、
+        # コマンドトークンに続くものを文字列として解析します。
         if (
             token_type in self.COMMANDS
             and self._peek != ";"
@@ -1270,6 +1285,7 @@ class Tokenizer(metaclass=_Tokenizer):
 
         if comment_end:
             # Skip the comment's start delimiter
+            # コメントの開始区切り文字をスキップする
             self._advance(comment_start_size)
 
             comment_count = 1
@@ -1284,6 +1300,7 @@ class Tokenizer(metaclass=_Tokenizer):
                 self._advance(alnum=True)
 
                 # Nested comments are allowed by some dialects, e.g. databricks, duckdb, postgres
+                # ネストされたコメントは、databricks、duckdb、postgresなどの一部の方言で許可されています。
                 if (
                     self.NESTED_COMMENTS
                     and not self._end
@@ -1308,6 +1325,8 @@ class Tokenizer(metaclass=_Tokenizer):
 
         # Leading comment is attached to the succeeding token, whilst trailing comment to the preceding.
         # Multiple consecutive comments are preserved by appending them to the current comments list.
+        # 先頭のコメントは後続のトークンに付加され、末尾のコメントは前のトークンに付加されます。
+        # 連続する複数のコメントは、現在のコメントリストに追加することで保持されます。
         if comment_start_line == self._prev_token_line:
             self.tokens[-1].comments.extend(self._comments)
             self._comments = []
@@ -1371,6 +1390,7 @@ class Tokenizer(metaclass=_Tokenizer):
         value = self._extract_value()
         try:
             # If `value` can't be converted to a binary, fallback to tokenizing it as an identifier
+            # `value` をバイナリに変換できない場合は、識別子としてトークン化します。
             int(value, 2)
             self._add(TokenType.BIT_STRING, value[2:])  # Drop the 0b
         except ValueError:
@@ -1381,6 +1401,7 @@ class Tokenizer(metaclass=_Tokenizer):
         value = self._extract_value()
         try:
             # If `value` can't be converted to a hex, fallback to tokenizing it as an identifier
+            # `value` を 16 進数に変換できない場合は、識別子としてトークン化します。
             int(value, 16)
             self._add(TokenType.HEX_STRING, value[2:])  # Drop the 0x
         except ValueError:
@@ -1533,6 +1554,7 @@ class Tokenizer(metaclass=_Tokenizer):
             token.token_type = _ALL_TOKEN_TYPES[token.token_type_index]
 
         # Setting this here so partial token lists can be inspected even if there is a failure
+        # ここでこれを設定すると、失敗した場合でも部分的なトークンリストを検査できるようになります。
         self.tokens = tokens
 
         if error_msg is not None:
