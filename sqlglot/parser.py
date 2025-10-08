@@ -818,6 +818,8 @@ class Parser(metaclass=_Parser):
         exp.DataType: lambda self: self._parse_types(allow_identifiers=False, schema=True),
         exp.Expression: lambda self: self._parse_expression(),
         exp.From: lambda self: self._parse_from(joins=True),
+        exp.GrantPrincipal: lambda self: self._parse_grant_principal(),
+        exp.GrantPrivilege: lambda self: self._parse_grant_privilege(),
         exp.Group: lambda self: self._parse_group(),
         exp.Having: lambda self: self._parse_having(),
         exp.Hint: lambda self: self._parse_hint_body(),
@@ -1148,11 +1150,6 @@ class Parser(metaclass=_Parser):
         "TTL": lambda self: self.expression(exp.MergeTreeTTL, expressions=[self._parse_bitwise()]),
         "UNIQUE": lambda self: self._parse_unique(),
         "UPPERCASE": lambda self: self.expression(exp.UppercaseColumnConstraint),
-        "WATERMARK": lambda self: self.expression(
-            exp.WatermarkColumnConstraint,
-            this=self._match(TokenType.FOR) and self._parse_column(),
-            expression=self._match(TokenType.ALIAS) and self._parse_disjunction(),
-        ),
         "WITH": lambda self: self.expression(
             exp.Properties, expressions=self._parse_wrapped_properties()
         ),
@@ -1221,7 +1218,6 @@ class Parser(metaclass=_Parser):
         "PERIOD",
         "PRIMARY KEY",
         "UNIQUE",
-        "WATERMARK",
         "BUCKET",
         "TRUNCATE",
     }
@@ -1421,7 +1417,7 @@ class Parser(metaclass=_Parser):
 
     VIEW_ATTRIBUTES = {"ENCRYPTION", "SCHEMABINDING", "VIEW_METADATA"}
 
-    WINDOW_ALIAS_TOKENS = ID_VAR_TOKENS - {TokenType.ROWS}
+    WINDOW_ALIAS_TOKENS = ID_VAR_TOKENS - {TokenType.RANGE, TokenType.ROWS}
     WINDOW_BEFORE_PAREN_TOKENS = {TokenType.OVER}
     WINDOW_SIDES = {"FOLLOWING", "PRECEDING"}
 
@@ -1600,6 +1596,10 @@ class Parser(metaclass=_Parser):
     # Databricksなどの方言は、結合条件なしのJOINをサポートしています。
     # ON TRUEを追加すると、他の方言でも意味的に正しいトランスパイルが行われます。
     ADD_JOIN_ON_TRUE = False
+
+    # Whether INTERVAL spans with literal format '\d+ hh:[mm:[ss[.ff]]]'
+    # can omit the span unit `DAY TO MINUTE` or `DAY TO SECOND`
+    SUPPORTS_OMITTED_INTERVAL_SPAN_UNIT = False
 
     __slots__ = (
         "error_level",
@@ -3190,21 +3190,26 @@ class Parser(metaclass=_Parser):
         )
 
     def _parse_update(self) -> exp.Update:
-        this = self._parse_table(joins=True, alias_tokens=self.UPDATE_ALIAS_TOKENS)
-        expressions = self._match(TokenType.SET) and self._parse_csv(self._parse_equality)
-        returning = self._parse_returning()
-        return self.expression(
-            exp.Update,
-            **{  # type: ignore
-                "this": this,
-                "expressions": expressions,
-                "from": self._parse_from(joins=True),
-                "where": self._parse_where(),
-                "returning": returning or self._parse_returning(),
-                "order": self._parse_order(),
-                "limit": self._parse_limit(),
-            },
-        )
+        kwargs: t.Dict[str, t.Any] = {
+            "this": self._parse_table(joins=True, alias_tokens=self.UPDATE_ALIAS_TOKENS),
+        }
+        while self._curr:
+            if self._match(TokenType.SET):
+                kwargs["expressions"] = self._parse_csv(self._parse_equality)
+            elif self._match(TokenType.RETURNING, advance=False):
+                kwargs["returning"] = self._parse_returning()
+            elif self._match(TokenType.FROM, advance=False):
+                kwargs["from"] = self._parse_from(joins=True)
+            elif self._match(TokenType.WHERE, advance=False):
+                kwargs["where"] = self._parse_where()
+            elif self._match(TokenType.ORDER_BY, advance=False):
+                kwargs["order"] = self._parse_order()
+            elif self._match(TokenType.LIMIT, advance=False):
+                kwargs["limit"] = self._parse_limit()
+            else:
+                break
+
+        return self.expression(exp.Update, **kwargs)
 
     def _parse_use(self) -> exp.Use:
         return self.expression(
@@ -4323,8 +4328,10 @@ class Parser(metaclass=_Parser):
         )
 
     def _parse_unnest(self, with_alias: bool = True) -> t.Optional[exp.Unnest]:
-        if not self._match(TokenType.UNNEST):
+        if not self._match_pair(TokenType.UNNEST, TokenType.L_PAREN, advance=False):
             return None
+
+        self._advance()
 
         expressions = self._parse_wrapped_csv(self._parse_equality)
         offset = self._match_pair(TokenType.WITH, TokenType.ORDINALITY)
@@ -4671,21 +4678,11 @@ class Parser(metaclass=_Parser):
             before_with_index = self._index
             with_prefix = self._match(TokenType.WITH)
 
-            if self._match(TokenType.ROLLUP):
-                elements["rollup"].append(
-                    self._parse_cube_or_rollup(exp.Rollup, with_prefix=with_prefix)
-                )
-            elif self._match(TokenType.CUBE):
-                elements["cube"].append(
-                    self._parse_cube_or_rollup(exp.Cube, with_prefix=with_prefix)
-                )
-            elif self._match(TokenType.GROUPING_SETS):
-                elements["grouping_sets"].append(
-                    self.expression(
-                        exp.GroupingSets,
-                        expressions=self._parse_wrapped_csv(self._parse_grouping_set),
-                    )
-                )
+            if cube_or_rollup := self._parse_cube_or_rollup(with_prefix=with_prefix):
+                key = "rollup" if isinstance(cube_or_rollup, exp.Rollup) else "cube"
+                elements[key].append(cube_or_rollup)
+            elif grouping_sets := self._parse_grouping_sets():
+                elements["grouping_sets"].append(grouping_sets)
             elif self._match_text_seq("TOTALS"):
                 elements["totals"] = True  # type: ignore
 
@@ -4698,18 +4695,27 @@ class Parser(metaclass=_Parser):
 
         return self.expression(exp.Group, comments=comments, **elements)  # type: ignore
 
-    def _parse_cube_or_rollup(self, kind: t.Type[E], with_prefix: bool = False) -> E:
+    def _parse_cube_or_rollup(self, with_prefix: bool = False) -> t.Optional[exp.Cube | exp.Rollup]:
+        if self._match(TokenType.CUBE):
+            kind: t.Type[exp.Cube | exp.Rollup] = exp.Cube
+        elif self._match(TokenType.ROLLUP):
+            kind = exp.Rollup
+        else:
+            return None
+
         return self.expression(
             kind, expressions=[] if with_prefix else self._parse_wrapped_csv(self._parse_column)
         )
 
-    def _parse_grouping_set(self) -> t.Optional[exp.Expression]:
-        if self._match(TokenType.L_PAREN):
-            grouping_set = self._parse_csv(self._parse_column)
-            self._match_r_paren()
-            return self.expression(exp.Tuple, expressions=grouping_set)
+    def _parse_grouping_sets(self) -> t.Optional[exp.GroupingSets]:
+        if self._match(TokenType.GROUPING_SETS):
+            return self.expression(
+                exp.GroupingSets, expressions=self._parse_wrapped_csv(self._parse_grouping_set)
+            )
+        return None
 
-        return self._parse_column()
+    def _parse_grouping_set(self) -> t.Optional[exp.Expression]:
+        return self._parse_grouping_sets() or self._parse_cube_or_rollup() or self._parse_bitwise()
 
     def _parse_having(self, skip_having_token: bool = False) -> t.Optional[exp.Having]:
         if not skip_having_token and not self._match(TokenType.HAVING):
@@ -4828,11 +4834,15 @@ class Parser(metaclass=_Parser):
             exp.Ordered, this=this, desc=desc, nulls_first=nulls_first, with_fill=with_fill
         )
 
-    def _parse_limit_options(self) -> exp.LimitOptions:
-        percent = self._match(TokenType.PERCENT)
+    def _parse_limit_options(self) -> t.Optional[exp.LimitOptions]:
+        percent = self._match_set((TokenType.PERCENT, TokenType.MOD))
         rows = self._match_set((TokenType.ROW, TokenType.ROWS))
         self._match_text_seq("ONLY")
         with_ties = self._match_text_seq("WITH", "TIES")
+
+        if not (percent or rows or with_ties):
+            return None
+
         return self.expression(exp.LimitOptions, percent=percent, rows=rows, with_ties=with_ties)
 
     def _parse_limit(
@@ -4850,10 +4860,13 @@ class Parser(metaclass=_Parser):
                 if limit_paren:
                     self._match_r_paren()
 
-                limit_options = self._parse_limit_options()
             else:
-                limit_options = None
-                expression = self._parse_term()
+                # Parsing LIMIT x% (i.e x PERCENT) as a term leads to an error, since
+                # we try to build an exp.Mod expr. For that matter, we backtrack and instead
+                # consume the factor plus parse the percentage separately
+                expression = self._try_parse(self._parse_term) or self._parse_factor()
+
+            limit_options = self._parse_limit_options()
 
             if self._match(TokenType.COMMA):
                 offset = expression
@@ -5193,14 +5206,43 @@ class Parser(metaclass=_Parser):
             isinstance(this, exp.Column)
             and not this.table
             and not this.this.quoted
-            and this.name.upper() in ("IS", "ROWS")
+            and self._curr
+            and self._curr.text.upper() not in self.dialect.VALID_INTERVAL_UNITS
         ):
             self._retreat(index)
             return None
 
-        unit = self._parse_function() or (
-            not self._match(TokenType.ALIAS, advance=False)
-            and self._parse_var(any_token=True, upper=True)
+        # handle day-time format interval span with omitted units:
+        #   INTERVAL '<number days> hh[:][mm[:ss[.ff]]]' <maybe `unit TO unit`>
+        interval_span_units_omitted = None
+        if (
+            this
+            and this.is_string
+            and self.SUPPORTS_OMITTED_INTERVAL_SPAN_UNIT
+            and exp.INTERVAL_DAY_TIME_RE.match(this.name)
+        ):
+            index = self._index
+
+            # Var "TO" Var
+            first_unit = self._parse_var(any_token=True, upper=True)
+            second_unit = None
+            if first_unit and self._match_text_seq("TO"):
+                second_unit = self._parse_var(any_token=True, upper=True)
+
+            interval_span_units_omitted = not (first_unit and second_unit)
+
+            self._retreat(index)
+
+        unit = (
+            None
+            if interval_span_units_omitted
+            else (
+                self._parse_function()
+                or (
+                    not self._match(TokenType.ALIAS, advance=False)
+                    and self._parse_var(any_token=True, upper=True)
+                )
+            )
         )
 
         # Most dialects support, e.g., the form INTERVAL '5' day, thus we try to parse
@@ -5220,6 +5262,7 @@ class Parser(metaclass=_Parser):
             if len(parts) == 1:
                 this = exp.Literal.string(parts[0][0])
                 unit = self.expression(exp.Var, this=parts[0][1].upper())
+
         if self.INTERVAL_SPANS and self._match_text_seq("TO"):
             unit = self.expression(
                 exp.IntervalSpan, this=unit, expression=self._parse_var(any_token=True, upper=True)
@@ -5606,6 +5649,11 @@ class Parser(metaclass=_Parser):
 
                 type_token = unsigned_type_token or type_token
 
+            # NULLABLE without parentheses can be a column (Presto/Trino)
+            if type_token == TokenType.NULLABLE and not expressions:
+                self._retreat(index)
+                return None
+
             this = exp.DataType(
                 this=exp.DataType.Type[type_token.value],
                 expressions=expressions,
@@ -5896,6 +5944,10 @@ class Parser(metaclass=_Parser):
             this.add_comments(comments)
 
         self._match_r_paren(expression=this)
+
+        if isinstance(this, exp.Paren) and isinstance(this.this, exp.AggFunc):
+            return self._parse_window(this)
+
         return this
 
     def _parse_primary(self) -> t.Optional[exp.Expression]:

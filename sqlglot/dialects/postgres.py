@@ -375,6 +375,8 @@ class Postgres(Dialect):
         VAR_SINGLE_TOKENS = {"$"}
 
     class Parser(parser.Parser):
+        SUPPORTS_OMITTED_INTERVAL_SPAN_UNIT = True
+
         PROPERTY_PARSERS = {
             **parser.Parser.PROPERTY_PARSERS,
             "SET": lambda self: self.expression(exp.SetConfigProperty, this=self._parse_set()),
@@ -426,7 +428,7 @@ class Postgres(Dialect):
             "DATE_PART": lambda self: self._parse_date_part(),
             "JSON_AGG": lambda self: self.expression(
                 exp.JSONArrayAgg,
-                this=self._parse_bitwise(),
+                this=self._parse_lambda(),
                 order=self._parse_order(),
             ),
             "JSONB_EXISTS": lambda self: self._parse_jsonb_exists(),

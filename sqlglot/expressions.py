@@ -120,19 +120,43 @@ class Expression(metaclass=_Expression):
     def __eq__(self, other) -> bool:
         return type(self) is type(other) and hash(self) == hash(other)
 
-    @property
-    def hashable_args(self) -> t.Any:
-        return frozenset(
-            (k, tuple(_norm_arg(a) for a in v) if type(v) is list else _norm_arg(v))
-            for k, v in self.args.items()
-            if not (v is None or v is False or (type(v) is list and not v))
-        )
-
     def __hash__(self) -> int:
-        if self._hash is not None:
-            return self._hash
+        if self._hash is None:
+            nodes = []
+            queue = deque([self])
 
-        return hash((self.__class__, self.hashable_args))
+            while queue:
+                node = queue.popleft()
+                nodes.append(node)
+
+                for v in node.iter_expressions():
+                    if v._hash is None:
+                        queue.append(v)
+
+            for node in reversed(nodes):
+                hash_ = hash(node.key)
+                t = type(node)
+
+                if t is Literal or t is Identifier:
+                    for k, v in sorted(node.args.items()):
+                        if v:
+                            hash_ = hash((hash_, k, v))
+                else:
+                    for k, v in sorted(node.args.items()):
+                        t = type(v)
+
+                        if t is list:
+                            for x in v:
+                                if x is not None and x is not False:
+                                    hash_ = hash((hash_, k, x.lower() if type(x) is str else x))
+                                else:
+                                    hash_ = hash((hash_, k))
+                        elif v is not None and v is not False:
+                            hash_ = hash((hash_, k, v.lower() if t is str else v))
+
+                node._hash = hash_
+        assert self._hash
+        return self._hash
 
     def __reduce__(self) -> t.Tuple[t.Callable, t.Tuple[t.List[t.Dict[str, t.Any]]]]:
         from sqlglot.serde import dump, load
@@ -369,6 +393,12 @@ class Expression(metaclass=_Expression):
             overwrite: assuming an index is given, this determines whether to overwrite the
                 list entry instead of only inserting a new value (i.e., like list.insert).
         """
+        expression: t.Optional[Expression] = self
+
+        while expression and expression._hash is not None:
+            expression._hash = None
+            expression = expression.parent
+
         if index is not None:
             expressions = self.args.get(arg_key) or []
 
@@ -2235,8 +2265,12 @@ class Prior(Expression):
 
 
 class Directory(Expression):
-    # https://spark.apache.org/docs/3.0.0-preview/sql-ref-syntax-dml-insert-overwrite-directory-hive.html
     arg_types = {"this": True, "local": False, "row_format": False}
+
+
+# https://docs.snowflake.com/en/user-guide/data-load-dirtables-query
+class DirectoryStage(Expression):
+    pass
 
 
 class ForeignKey(Expression):
@@ -2297,10 +2331,6 @@ class Identifier(Expression):
     @property
     def quoted(self) -> bool:
         return bool(self.args.get("quoted"))
-
-    @property
-    def hashable_args(self) -> t.Any:
-        return (self.this, self.quoted)
 
     @property
     def output_name(self) -> str:
@@ -2535,10 +2565,6 @@ class LimitOptions(Expression):
 
 class Literal(Condition):
     arg_types = {"this": True, "is_string": True}
-
-    @property
-    def hashable_args(self) -> t.Any:
-        return (self.this, self.args.get("is_string"))
 
     @classmethod
     def number(cls, number) -> Literal:
@@ -5359,7 +5385,7 @@ class TimeUnit(Expression):
 
     def __init__(self, **args):
         unit = args.get("unit")
-        if type(unit) in self.VAR_LIKE:
+        if type(unit) in self.VAR_LIKE and not (isinstance(unit, Column) and len(unit.parts) != 1):
             args["unit"] = Var(
                 this=(self.UNABBREVIATED_UNIT_NAME.get(unit.name) or unit.name).upper()
             )
@@ -5499,6 +5525,10 @@ class Coth(Func):
     pass
 
 
+class Cos(Func):
+    pass
+
+
 class Csc(Func):
     pass
 
@@ -5523,11 +5553,27 @@ class Sinh(Func):
     pass
 
 
+class Tan(Func):
+    pass
+
+
+class Degrees(Func):
+    pass
+
+
+class Cosh(Func):
+    pass
+
+
 class CosineDistance(Func):
     arg_types = {"this": True, "expression": True}
 
 
 class EuclideanDistance(Func):
+    arg_types = {"this": True, "expression": True}
+
+
+class JarowinklerSimilarity(Func):
     arg_types = {"this": True, "expression": True}
 
 
@@ -5810,6 +5856,7 @@ class ArrayConstructCompact(Func):
 
 
 class ArrayContains(Binary, Func):
+    arg_types = {"this": True, "expression": True, "ensure_variant": False}
     _sql_names = ["ARRAY_CONTAINS", "ARRAY_HAS"]
 
 
@@ -6022,6 +6069,10 @@ class Collate(Binary, Func):
     pass
 
 
+class Collation(Func):
+    pass
+
+
 class Ceil(Func):
     arg_types = {"this": True, "decimals": False, "to": False}
     _sql_names = ["CEIL", "CEILING"]
@@ -6138,7 +6189,9 @@ class DateTrunc(Func):
         unabbreviate = args.pop("unabbreviate", True)
 
         unit = args.get("unit")
-        if isinstance(unit, TimeUnit.VAR_LIKE):
+        if isinstance(unit, TimeUnit.VAR_LIKE) and not (
+            isinstance(unit, Column) and len(unit.parts) != 1
+        ):
             unit_name = unit.name.upper()
             if unabbreviate and unit_name in TimeUnit.UNABBREVIATED_UNIT_NAME:
                 unit_name = TimeUnit.UNABBREVIATED_UNIT_NAME[unit_name]
@@ -6414,8 +6467,39 @@ class ToBase64(Func):
     pass
 
 
+# https://docs.snowflake.com/en/sql-reference/functions/base64_decode_binary
 class Base64DecodeBinary(Func):
     arg_types = {"this": True, "alphabet": False}
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/base64_decode_string
+class Base64DecodeString(Func):
+    arg_types = {"this": True, "alphabet": False}
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/base64_encode
+class Base64Encode(Func):
+    arg_types = {"this": True, "max_line_length": False, "alphabet": False}
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/try_base64_decode_binary
+class TryBase64DecodeBinary(Func):
+    arg_types = {"this": True, "alphabet": False}
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/try_base64_decode_string
+class TryBase64DecodeString(Func):
+    arg_types = {"this": True, "alphabet": False}
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/try_hex_decode_binary
+class TryHexDecodeBinary(Func):
+    pass
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/try_hex_decode_string
+class TryHexDecodeString(Func):
+    pass
 
 
 # https://trino.io/docs/current/functions/datetime.html#from_iso8601_timestamp
@@ -6467,6 +6551,32 @@ class GroupConcat(AggFunc):
 
 class Hex(Func):
     pass
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/hex_decode_string
+class HexDecodeString(Func):
+    pass
+
+
+# https://docs.snowflake.com/en/sql-reference/functions/hex_encode
+class HexEncode(Func):
+    arg_types = {"this": True, "case": False}
+
+
+# T-SQL: https://learn.microsoft.com/en-us/sql/t-sql/functions/compress-transact-sql?view=sql-server-ver17
+# Snowflake: https://docs.snowflake.com/en/sql-reference/functions/compress
+class Compress(Func):
+    arg_types = {"this": True, "method": False}
+
+
+# Snowflake: https://docs.snowflake.com/en/sql-reference/functions/decompress_binary
+class DecompressBinary(Func):
+    arg_types = {"this": True, "method": True}
+
+
+# Snowflake: https://docs.snowflake.com/en/sql-reference/functions/decompress_string
+class DecompressString(Func):
+    arg_types = {"this": True, "method": True}
 
 
 class LowerHex(Hex):
@@ -6845,6 +6955,16 @@ class ParseJSON(Func):
     arg_types = {"this": True, "expression": False, "safe": False}
 
 
+# Snowflake: https://docs.snowflake.com/en/sql-reference/functions/parse_url
+# Databricks: https://docs.databricks.com/aws/en/sql/language-manual/functions/parse_url
+class ParseUrl(Func):
+    arg_types = {"this": True, "part_to_extract": False, "key": False, "permissive": False}
+
+
+class ParseIp(Func):
+    arg_types = {"this": True, "type": True, "permissive": False}
+
+
 class ParseTime(Func):
     arg_types = {"this": True, "format": True}
 
@@ -6873,6 +6993,14 @@ class Reverse(Func):
 class Length(Func):
     arg_types = {"this": True, "binary": False, "encoding": False}
     _sql_names = ["LENGTH", "LEN", "CHAR_LENGTH", "CHARACTER_LENGTH"]
+
+
+class RtrimmedLength(Func):
+    pass
+
+
+class BitLength(Func):
+    pass
 
 
 class Levenshtein(Func):
@@ -7170,6 +7298,10 @@ class RegexpILike(Binary, Func):
     arg_types = {"this": True, "expression": True, "flag": False}
 
 
+class RegexpFullMatch(Binary, Func):
+    arg_types = {"this": True, "expression": True, "options": False}
+
+
 class RegexpInstr(Func):
     arg_types = {
         "this": True,
@@ -7186,6 +7318,15 @@ class RegexpInstr(Func):
 # limit is the number of times a pattern is applied
 class RegexpSplit(Func):
     arg_types = {"this": True, "expression": True, "limit": False}
+
+
+class RegexpCount(Func):
+    arg_types = {
+        "this": True,
+        "expression": True,
+        "position": False,
+        "parameters": False,
+    }
 
 
 class Repeat(Func):
@@ -7262,13 +7403,20 @@ class Soundex(Func):
     pass
 
 
+# https://docs.snowflake.com/en/sql-reference/functions/soundex_p123
+class SoundexP123(Func):
+    pass
+
+
 class Split(Func):
     arg_types = {"this": True, "expression": True, "limit": False}
 
 
 # https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/api/pyspark.sql.functions.split_part.html
+# https://docs.snowflake.com/en/sql-reference/functions/split_part
+# https://docs.snowflake.com/en/sql-reference/functions/strtok
 class SplitPart(Func):
-    arg_types = {"this": True, "delimiter": True, "part_index": True}
+    arg_types = {"this": True, "delimiter": False, "part_index": False}
 
 
 # Start may be omitted in the case of postgres
@@ -7309,6 +7457,19 @@ class StrPosition(Func):
         "substr": True,
         "position": False,
         "occurrence": False,
+    }
+
+
+# Snowflake: https://docs.snowflake.com/en/sql-reference/functions/search
+# BigQuery: https://cloud.google.com/bigquery/docs/reference/standard-sql/search_functions#search
+class Search(Func):
+    arg_types = {
+        "this": True,  # data_to_search / search_data
+        "expression": True,  # search_query / search_string
+        "json_scope": False,  # BigQuery: JSON_VALUES | JSON_KEYS | JSON_KEYS_AND_VALUES
+        "analyzer": False,  # Both: analyzer / ANALYZER
+        "analyzer_options": False,  # BigQuery: analyzer_options_values
+        "search_mode": False,  # Snowflake: OR | AND
     }
 
 
@@ -7649,10 +7810,6 @@ class Semicolon(Expression):
 # type is intended to be constructed by qualify so that we can properly annotate its type later
 class TableColumn(Expression):
     pass
-
-
-def _norm_arg(arg):
-    return arg.lower() if type(arg) is str else arg
 
 
 ALL_FUNCTIONS = subclasses(__name__, Func, (AggFunc, Anonymous, Func))
@@ -8560,6 +8717,19 @@ def parse_identifier(name: str | Identifier, dialect: DialectType = None) -> Ide
 
 
 INTERVAL_STRING_RE = re.compile(r"\s*(-?[0-9]+(?:\.[0-9]+)?)\s*([a-zA-Z]+)\s*")
+
+# Matches day-time interval strings that contain
+# - A number of days (possibly negative or with decimals)
+# - At least one space
+# - Portions of a time-like signature, potentially negative
+#   - Standard format                   [-]h+:m+:s+[.f+]
+#   - Just minutes/seconds/frac seconds [-]m+:s+.f+
+#   - Just hours, minutes, maybe colon  [-]h+:m+[:]
+#   - Just hours, maybe colon           [-]h+[:]
+#   - Just colon                        :
+INTERVAL_DAY_TIME_RE = re.compile(
+    r"\s*-?\s*\d+(?:\.\d+)?\s+(?:-?(?:\d+:)?\d+:\d+(?:\.\d+)?|-?(?:\d+:){1,2}|:)\s*"
+)
 
 
 def to_interval(interval: str | Literal) -> Interval:

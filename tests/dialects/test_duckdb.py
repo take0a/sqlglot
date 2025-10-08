@@ -9,6 +9,7 @@ class TestDuckDB(Validator):
     dialect = "duckdb"
 
     def test_duckdb(self):
+        self.validate_identity("SELECT COSH(1.5)")
         with self.assertRaises(ParseError):
             parse_one("1 //", read="duckdb")
 
@@ -193,6 +194,7 @@ class TestDuckDB(Validator):
                 },
             )
 
+        self.validate_identity("SELECT EXP(1)")
         self.validate_identity("""SELECT '{"duck": [1, 2, 3]}' -> '$.duck[#-1]'""")
         self.validate_all(
             """SELECT JSON_EXTRACT('{"duck": [1, 2, 3]}', '/duck/0')""",
@@ -284,6 +286,7 @@ class TestDuckDB(Validator):
         self.validate_identity(
             "SELECT LIST_TRANSFORM(LIST_FILTER([0, 1, 2, 3, 4, 5], LAMBDA x : x % 2 = 0), LAMBDA y : y * y)"
         )
+        self.validate_identity("CREATE TABLE notes (watermark TEXT)")
         self.validate_identity("SELECT LIST_TRANSFORM([5, NULL, 6], LAMBDA x : COALESCE(x, 0) + 1)")
         self.validate_identity("SELECT LIST_TRANSFORM(nbr, LAMBDA x : x + 1) FROM article AS a")
         self.validate_identity("SELECT * FROM my_ducklake.demo AT (VERSION => 2)")
@@ -361,6 +364,10 @@ class TestDuckDB(Validator):
 
         self.validate_identity(
             """SELECT '{ "family": "anatidae", "species": [ "duck", "goose", "swan", null ] }' ->> ['$.family', '$.species']""",
+        )
+        self.validate_identity(
+            "SELECT $🦆$foo$🦆$",
+            "SELECT 'foo'",
         )
         self.validate_identity(
             "SELECT * FROM t PIVOT(FIRST(t) AS t, FOR quarter IN ('Q1', 'Q2'))",
@@ -460,7 +467,9 @@ class TestDuckDB(Validator):
 
         self.validate_all("0b1010", write={"": "0 AS b1010"})
         self.validate_all("0x1010", write={"": "0 AS x1010"})
-        self.validate_all("x ~ y", write={"duckdb": "REGEXP_MATCHES(x, y)"})
+        self.validate_identity("x ~ y", "REGEXP_FULL_MATCH(x, y)")
+        self.validate_identity("x !~ y", "NOT REGEXP_FULL_MATCH(x, y)")
+        self.validate_identity("REGEXP_FULL_MATCH(x, y, 'i')")
         self.validate_all("SELECT * FROM 'x.y'", write={"duckdb": 'SELECT * FROM "x.y"'})
         self.validate_all(
             "SELECT LIST(DISTINCT sample_col) FROM sample_table",
@@ -1068,6 +1077,16 @@ class TestDuckDB(Validator):
         )
         self.validate_identity("LIST_COSINE_DISTANCE(x, y)")
         self.validate_identity("LIST_DISTANCE(x, y)")
+
+        self.validate_identity("SELECT * FROM t LIMIT 10 PERCENT")
+        self.validate_identity("SELECT * FROM t LIMIT 10%", "SELECT * FROM t LIMIT 10 PERCENT")
+
+        self.validate_identity(
+            "SELECT CAST(ROW(1, 2) AS ROW(a INTEGER, b INTEGER))",
+            "SELECT CAST(ROW(1, 2) AS STRUCT(a INT, b INT))",
+        )
+
+        self.validate_identity("SELECT row")
 
     def test_array_index(self):
         with self.assertLogs(helper_logger) as cm:

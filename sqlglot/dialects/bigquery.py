@@ -754,15 +754,31 @@ class BigQuery(Dialect):
         SUPPORTS_IMPLICIT_UNNEST = True
         JOINS_HAVE_EQUAL_PRECEDENCE = True
 
-        # BigQuery does not allow ASC/DESC to be used as an identifier
-        ID_VAR_TOKENS = parser.Parser.ID_VAR_TOKENS - {TokenType.ASC, TokenType.DESC}
-        ALIAS_TOKENS = parser.Parser.ALIAS_TOKENS - {TokenType.ASC, TokenType.DESC}
-        TABLE_ALIAS_TOKENS = parser.Parser.TABLE_ALIAS_TOKENS - {TokenType.ASC, TokenType.DESC}
-        COMMENT_TABLE_ALIAS_TOKENS = parser.Parser.COMMENT_TABLE_ALIAS_TOKENS - {
-            TokenType.ASC,
-            TokenType.DESC,
-        }
-        UPDATE_ALIAS_TOKENS = parser.Parser.UPDATE_ALIAS_TOKENS - {TokenType.ASC, TokenType.DESC}
+        # BigQuery does not allow ASC/DESC to be used as an identifier, allows GRANT as an identifier
+        ID_VAR_TOKENS = {
+            *parser.Parser.ID_VAR_TOKENS,
+            TokenType.GRANT,
+        } - {TokenType.ASC, TokenType.DESC}
+
+        ALIAS_TOKENS = {
+            *parser.Parser.ALIAS_TOKENS,
+            TokenType.GRANT,
+        } - {TokenType.ASC, TokenType.DESC}
+
+        TABLE_ALIAS_TOKENS = {
+            *parser.Parser.TABLE_ALIAS_TOKENS,
+            TokenType.GRANT,
+        } - {TokenType.ASC, TokenType.DESC}
+
+        COMMENT_TABLE_ALIAS_TOKENS = {
+            *parser.Parser.COMMENT_TABLE_ALIAS_TOKENS,
+            TokenType.GRANT,
+        } - {TokenType.ASC, TokenType.DESC}
+
+        UPDATE_ALIAS_TOKENS = {
+            *parser.Parser.UPDATE_ALIAS_TOKENS,
+            TokenType.GRANT,
+        } - {TokenType.ASC, TokenType.DESC}
 
         FUNCTIONS = {
             **parser.Parser.FUNCTIONS,
@@ -851,6 +867,8 @@ class BigQuery(Dialect):
             "FROM_HEX": exp.Unhex.from_arg_list,
             "WEEK": lambda args: exp.WeekStart(this=exp.var(seq_get(args, 0))),
         }
+        # Remove SEARCH to avoid parameter routing issues - let it fall back to Anonymous function
+        FUNCTIONS.pop("SEARCH")
 
         FUNCTION_PARSERS = {
             **parser.Parser.FUNCTION_PARSERS,
