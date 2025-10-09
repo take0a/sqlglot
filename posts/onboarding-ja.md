@@ -35,7 +35,7 @@ SQLGlotのトランスパイルは、大まかに3つのモジュールで構成
 - [Parser](#parser): トークンのシーケンスを、生のコードの意味を表す抽象構文木に変換します。
 - [Generator](#generator): 抽象構文木をSQLコードに変換します。
 
-SQLGlotは、通常は異なるデータベースシステムに関連付けられている異なる_SQL方言_間でSQLをトランスパイルできます。
+SQLGlotは、通常は異なるデータベースシステムに関連付けられている異なる _SQL方言_ 間でSQLをトランスパイルできます。
 
 各方言は独自の構文を持ち、3つのモジュールの基本バージョンをオーバーライドすることで実装されます。方言定義は、3つの基本モジュールのいずれか、またはすべてをオーバーライドできます。
 
@@ -48,7 +48,7 @@ SQLGlotには、[Optimizer](#optimizer)やExecutorなど、基本的なトラン
 ## トークナイザー
 トークナイザーモジュール（`tokens.py`）は、SQLコードを意味のある情報の最小単位であるトークン（キーワード、識別子など）に分解する役割を担います。このプロセスは、字句解析（lexical analysis）とも呼ばれます。
 
-Pythonは処理速度やパフォーマンスを最大限に高めるように設計されていないため、SQLGlotはパフォーマンス向上のため、同等の[Rust版トークナイザー](https://tobikodata.com/sqlglot-jumps-on-the-rust-bandwagon.html)を`sqlglotrs/tokenizer.rs`に提供しています。
+Pythonは処理速度やパフォーマンスを最大限に高めるように設計されていないため、SQLGlotはパフォーマンス向上のため、同等の[Rust版トークナイザー](https://tobikodata.com/sqlglot-jumps-on-the-rust-bandwagon.html)を`sqlglotrs/tokenizer.rs`で提供しています。
 
 > [!IMPORTANT]
 > トークナイザーロジックの変更は、PythonとRustの両方のトークナイザーに反映させる必要があります。2つの実装を類似させ、コード移植時の作業負担を軽減することが目標です。

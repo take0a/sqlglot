@@ -50,12 +50,14 @@ pip3 install "sqlglot[rs]"
 または、ローカルチェックアウトをご利用ください:
 
 ```
+# Optionally prefix with UV=1 to use uv for the installation
 make install
 ```
 
 開発要件（オプション）:
 
 ```
+# Optionally prefix with UV=1 to use uv for the installation
 make install-dev
 ```
 
