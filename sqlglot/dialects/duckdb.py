@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import typing as t
 
 from sqlglot import exp, generator, parser, tokens, transforms
@@ -21,7 +22,6 @@ from sqlglot.dialects.dialect import (
     no_datetime_sql,
     encode_decode_sql,
     build_formatted_time,
-    inline_array_unless_query,
     no_comment_column_constraint_sql,
     no_time_sql,
     no_timestamp_sql,
@@ -30,7 +30,6 @@ from sqlglot.dialects.dialect import (
     remove_from_array_using_filter,
     strposition_sql,
     str_to_time_sql,
-    timestamptrunc_sql,
     timestrtotime_sql,
     unit_to_str,
     sha256_sql,
@@ -38,11 +37,17 @@ from sqlglot.dialects.dialect import (
     explode_to_unnest_sql,
     no_make_interval_sql,
     groupconcat_sql,
+    inline_array_unless_query,
+    regexp_replace_global_modifier,
 )
 from sqlglot.generator import unsupported_args
-from sqlglot.helper import seq_get
+from sqlglot.helper import is_date_unit, seq_get
 from sqlglot.tokens import TokenType
 from sqlglot.parser import binary_range_parser
+
+# Regex to detect time zones in timestamps of the form [+|-]TT[:tt]
+# The pattern matches timezone offsets that appear after the time portion
+TIMEZONE_PATTERN = re.compile(r":\d{2}.*?[+\-]\d{2}(?::\d{2})?")
 
 
 # BigQuery -> DuckDB conversion for the DATE function
@@ -211,7 +216,18 @@ def _arrow_json_extract_sql(self: DuckDB.Generator, expression: JSON_EXTRACT_TYP
 def _implicit_datetime_cast(
     arg: t.Optional[exp.Expression], type: exp.DataType.Type = exp.DataType.Type.DATE
 ) -> t.Optional[exp.Expression]:
-    return exp.cast(arg, type) if isinstance(arg, exp.Literal) else arg
+    if isinstance(arg, exp.Literal) and arg.is_string:
+        ts = arg.name
+        if type == exp.DataType.Type.DATE and ":" in ts:
+            type = (
+                exp.DataType.Type.TIMESTAMPTZ
+                if TIMEZONE_PATTERN.search(ts)
+                else exp.DataType.Type.TIMESTAMP
+            )
+
+        arg = exp.cast(arg, type)
+
+    return arg
 
 
 def _date_diff_sql(self: DuckDB.Generator, expression: exp.DateDiff) -> str:
@@ -249,6 +265,29 @@ def _json_extract_value_array_sql(
     json_extract = exp.JSONExtract(this=expression.this, expression=expression.expression)
     data_type = "ARRAY<STRING>" if isinstance(expression, exp.JSONValueArray) else "ARRAY<JSON>"
     return self.sql(exp.cast(json_extract, to=exp.DataType.build(data_type)))
+
+
+def _cast_to_varchar(arg: t.Optional[exp.Expression]) -> t.Optional[exp.Expression]:
+    if arg and arg.type and not arg.is_type(exp.DataType.Type.VARCHAR, exp.DataType.Type.UNKNOWN):
+        return exp.cast(arg, exp.DataType.Type.VARCHAR)
+    return arg
+
+
+def _cast_to_blob(self: DuckDB.Generator, expression: exp.Expression, result_sql: str) -> str:
+    is_binary = expression.is_type(exp.DataType.Type.BINARY)
+    if is_binary:
+        blob = exp.DataType.build("BLOB", dialect="duckdb")
+        result_sql = self.sql(exp.Cast(this=result_sql, to=blob))
+    return result_sql
+
+
+def _anyvalue_sql(self: DuckDB.Generator, expression: exp.AnyValue) -> str:
+    # Transform ANY_VALUE(expr HAVING MAX/MIN having_expr) to ARG_MAX_NULL/ARG_MIN_NULL
+    having = expression.this
+    if isinstance(having, exp.HavingMax):
+        func_name = "ARG_MAX_NULL" if having.args.get("max") else "ARG_MIN_NULL"
+        return self.func(func_name, having.this, having.expression)
+    return self.function_fallback_sql(expression)
 
 
 class DuckDB(Dialect):
@@ -306,7 +345,9 @@ class DuckDB(Dialect):
             "DETACH": TokenType.DETACH,
             "FORCE": TokenType.FORCE,
             "INSTALL": TokenType.INSTALL,
+            "INT8": TokenType.BIGINT,
             "LOGICAL": TokenType.BOOLEAN,
+            "MACRO": TokenType.FUNCTION,
             "ONLY": TokenType.ONLY,
             "PIVOT_WIDER": TokenType.PIVOT,
             "POSITIONAL": TokenType.POSITIONAL,
@@ -398,6 +439,7 @@ class DuckDB(Dialect):
             "LIST_SORT": exp.SortArray.from_arg_list,
             "LIST_TRANSFORM": exp.Transform.from_arg_list,
             "LIST_VALUE": lambda args: exp.Array(expressions=args),
+            "MAKE_DATE": exp.DateFromParts.from_arg_list,
             "MAKE_TIME": exp.TimeFromParts.from_arg_list,
             "MAKE_TIMESTAMP": _build_make_timestamp,
             "QUANTILE_CONT": exp.PercentileCont.from_arg_list,
@@ -411,6 +453,7 @@ class DuckDB(Dialect):
                 expression=seq_get(args, 1),
                 replacement=seq_get(args, 2),
                 modifiers=seq_get(args, 3),
+                single_replace=True,
             ),
             "SHA256": lambda args: exp.SHA2(this=seq_get(args, 0), length=exp.Literal.number(256)),
             "STRFTIME": build_formatted_time(exp.TimeToStr, "duckdb"),
@@ -619,11 +662,9 @@ class DuckDB(Dialect):
         def _parse_install(self, force: bool = False) -> exp.Install:
             return self.expression(
                 exp.Install,
-                **{  # type: ignore
-                    "this": self._parse_id_var(),
-                    "from": self._parse_var_or_string() if self._match(TokenType.FROM) else None,
-                    "force": force,
-                },
+                this=self._parse_id_var(),
+                from_=self._parse_var_or_string() if self._match(TokenType.FROM) else None,
+                force=force,
             )
 
         def _parse_primary(self) -> t.Optional[exp.Expression]:
@@ -661,11 +702,16 @@ class DuckDB(Dialect):
         ARRAY_SIZE_DIM_REQUIRED = False
         NORMALIZE_EXTRACT_DATE_PARTS = True
         SUPPORTS_LIKE_QUANTIFIERS = False
+        SET_ASSIGNMENT_REQUIRES_VARIABLE_KEYWORD = True
 
         TRANSFORMS = {
             **generator.Generator.TRANSFORMS,
+            exp.AnyValue: _anyvalue_sql,
             exp.ApproxDistinct: approx_count_distinct_sql,
-            exp.Array: inline_array_unless_query,
+            exp.Array: transforms.preprocess(
+                [transforms.inherit_struct_field_names],
+                generator=inline_array_unless_query,
+            ),
             exp.ArrayFilter: rename_func("LIST_FILTER"),
             exp.ArrayRemove: remove_from_array_using_filter,
             exp.ArraySort: _array_sort_sql,
@@ -679,7 +725,6 @@ class DuckDB(Dialect):
             exp.BitwiseXorAgg: rename_func("BIT_XOR"),
             exp.CommentColumnConstraint: no_comment_column_constraint_sql,
             exp.CosineDistance: rename_func("LIST_COSINE_DISTANCE"),
-            exp.CurrentDate: lambda *_: "CURRENT_DATE",
             exp.CurrentTime: lambda *_: "CURRENT_TIME",
             exp.CurrentTimestamp: lambda *_: "CURRENT_TIMESTAMP",
             exp.DayOfMonth: rename_func("DAYOFMONTH"),
@@ -694,6 +739,7 @@ class DuckDB(Dialect):
             exp.DateDiff: _date_diff_sql,
             exp.DateStrToDate: datestrtodate_sql,
             exp.Datetime: no_datetime_sql,
+            exp.DatetimeDiff: _date_diff_sql,
             exp.DatetimeSub: date_delta_to_binary_interval_op(),
             exp.DatetimeAdd: date_delta_to_binary_interval_op(),
             exp.DateToDi: lambda self,
@@ -706,7 +752,6 @@ class DuckDB(Dialect):
             exp.GenerateDateArray: _generate_datetime_array_sql,
             exp.GenerateTimestampArray: _generate_datetime_array_sql,
             exp.GroupConcat: lambda self, e: groupconcat_sql(self, e, within_group=False),
-            exp.HexString: lambda self, e: self.hexstring_sql(e, binary_function_repr="FROM_HEX"),
             exp.Explode: rename_func("UNNEST"),
             exp.IntDiv: lambda self, e: self.binary(e, "//"),
             exp.IsInf: rename_func("ISINF"),
@@ -738,7 +783,7 @@ class DuckDB(Dialect):
                 e.this,
                 e.expression,
                 e.args.get("replacement"),
-                e.args.get("modifiers"),
+                regexp_replace_global_modifier(e),
             ),
             exp.RegexpLike: rename_func("REGEXP_MATCHES"),
             exp.RegexpILike: lambda self, e: self.func(
@@ -759,13 +804,15 @@ class DuckDB(Dialect):
             exp.Struct: _struct_sql,
             exp.Transform: rename_func("LIST_TRANSFORM"),
             exp.TimeAdd: date_delta_to_binary_interval_op(),
+            exp.TimeSub: date_delta_to_binary_interval_op(),
             exp.Time: no_time_sql,
             exp.TimeDiff: _timediff_sql,
             exp.Timestamp: no_timestamp_sql,
+            exp.TimestampAdd: date_delta_to_binary_interval_op(),
             exp.TimestampDiff: lambda self, e: self.func(
                 "DATE_DIFF", exp.Literal.string(e.unit), e.expression, e.this
             ),
-            exp.TimestampTrunc: timestamptrunc_sql(),
+            exp.TimestampSub: date_delta_to_binary_interval_op(),
             exp.TimeStrToDate: lambda self, e: self.sql(exp.cast(e.this, exp.DataType.Type.DATE)),
             exp.TimeStrToTime: timestrtotime_sql,
             exp.TimeStrToUnix: lambda self, e: self.func(
@@ -781,6 +828,13 @@ class DuckDB(Dialect):
                 f"'{e.args.get('unit') or 'DAY'}'",
                 exp.cast(e.expression, exp.DataType.Type.TIMESTAMP),
                 exp.cast(e.this, exp.DataType.Type.TIMESTAMP),
+            ),
+            exp.UnixMicros: lambda self, e: self.func("EPOCH_US", _implicit_datetime_cast(e.this)),
+            exp.UnixMillis: lambda self, e: self.func("EPOCH_MS", _implicit_datetime_cast(e.this)),
+            exp.UnixSeconds: lambda self, e: self.sql(
+                exp.cast(
+                    self.func("EPOCH", _implicit_datetime_cast(e.this)), exp.DataType.Type.BIGINT
+                )
             ),
             exp.UnixToStr: lambda self, e: self.func(
                 "STRFTIME", self.func("TO_TIMESTAMP", e.this), self.format_time(e)
@@ -952,7 +1006,7 @@ class DuckDB(Dialect):
         def install_sql(self, expression: exp.Install) -> str:
             force = "FORCE " if expression.args.get("force") else ""
             this = self.sql(expression, "this")
-            from_clause = expression.args.get("from")
+            from_clause = expression.args.get("from_")
             from_clause = f" FROM {from_clause}" if from_clause else ""
             return f"{force}INSTALL {this}{from_clause}"
 
@@ -970,6 +1024,16 @@ class DuckDB(Dialect):
                 formatted_time = self.format_time(expression)
                 return f"CAST({self.func('TRY_STRPTIME', expression.this, formatted_time)} AS DATE)"
             return f"CAST({str_to_time_sql(self, expression)} AS DATE)"
+
+        def currentdate_sql(self, expression: exp.CurrentDate) -> str:
+            if not expression.this:
+                return "CURRENT_DATE"
+
+            expr = exp.Cast(
+                this=exp.AtTimeZone(this=exp.CurrentTimestamp(), zone=expression.this),
+                to=exp.DataType(this=exp.DataType.Type.DATE),
+            )
+            return self.sql(expr)
 
         def parsejson_sql(self, expression: exp.ParseJSON) -> str:
             arg = expression.this
@@ -1039,8 +1103,8 @@ class DuckDB(Dialect):
                 if isinstance(expression.this, exp.Unnest):
                     return super().join_sql(expression.on(exp.true()))
 
-                expression.args.pop("side", None)
-                expression.args.pop("kind", None)
+                expression.set("side", None)
+                expression.set("kind", None)
 
             return super().join_sql(expression)
 
@@ -1126,6 +1190,23 @@ class DuckDB(Dialect):
 
             return self.sql(case)
 
+        def lower_sql(self, expression: exp.Lower) -> str:
+            result_sql = self.func("LOWER", _cast_to_varchar(expression.this))
+            return _cast_to_blob(self, expression, result_sql)
+
+        def upper_sql(self, expression: exp.Upper) -> str:
+            result_sql = self.func("UPPER", _cast_to_varchar(expression.this))
+            return _cast_to_blob(self, expression, result_sql)
+
+        def replace_sql(self, expression: exp.Replace) -> str:
+            result_sql = self.func(
+                "REPLACE",
+                _cast_to_varchar(expression.this),
+                _cast_to_varchar(expression.expression),
+                _cast_to_varchar(expression.args.get("replacement")),
+            )
+            return _cast_to_blob(self, expression, result_sql)
+
         def objectinsert_sql(self, expression: exp.ObjectInsert) -> str:
             this = expression.this
             key = expression.args.get("key")
@@ -1140,6 +1221,13 @@ class DuckDB(Dialect):
                 return self.func("STRUCT_PACK", kv_sql)
 
             return self.func("STRUCT_INSERT", this, kv_sql)
+
+        def startswith_sql(self, expression: exp.StartsWith) -> str:
+            return self.func(
+                "STARTS_WITH",
+                _cast_to_varchar(expression.this),
+                _cast_to_varchar(expression.expression),
+            )
 
         def unnest_sql(self, expression: exp.Unnest) -> str:
             explode_array = expression.args.get("explode_array")
@@ -1197,10 +1285,14 @@ class DuckDB(Dialect):
 
             return self.func("ARRAY_TO_STRING", this, expression.expression)
 
-        @unsupported_args("position", "occurrence")
         def regexpextract_sql(self, expression: exp.RegexpExtract) -> str:
+            this = expression.this
             group = expression.args.get("group")
             params = expression.args.get("parameters")
+            position = expression.args.get("position")
+            occurrence = expression.args.get("occurrence")
+            if position and (not position.is_int or position.to_py() > 1):
+                this = exp.Substring(this=this, start=position)
 
             # Do not render group if there is no following argument,
             # and it's the default value for this dialect
@@ -1210,9 +1302,15 @@ class DuckDB(Dialect):
                 and group.name == str(self.dialect.REGEXP_EXTRACT_DEFAULT_GROUP)
             ):
                 group = None
-            return self.func(
-                "REGEXP_EXTRACT", expression.this, expression.expression, group, params
-            )
+
+            if occurrence and (not occurrence.is_int or occurrence.to_py() > 1):
+                return self.func(
+                    "ARRAY_EXTRACT",
+                    self.func("REGEXP_EXTRACT_ALL", this, expression.expression, group, params),
+                    exp.Literal.number(occurrence),
+                )
+
+            return self.func("REGEXP_EXTRACT", this, expression.expression, group, params)
 
         @unsupported_args("culture")
         def numbertostr_sql(self, expression: exp.NumberToStr) -> str:
@@ -1301,3 +1399,33 @@ class DuckDB(Dialect):
                 return self.func("FORMAT", "'{}'", expression.expressions[0])
 
             return self.function_fallback_sql(expression)
+
+        def hexstring_sql(
+            self, expression: exp.HexString, binary_function_repr: t.Optional[str] = None
+        ) -> str:
+            from_hex = super().hexstring_sql(expression, binary_function_repr="FROM_HEX")
+
+            if expression.args.get("is_integer"):
+                return from_hex
+
+            # `from_hex` has transpiled x'ABCD' (BINARY) to DuckDB's '\xAB\xCD' (BINARY)
+            # `to_hex` & CASTing transforms it to "ABCD" (BINARY) to match representation
+            to_hex = exp.cast(self.func("TO_HEX", from_hex), exp.DataType.Type.BLOB)
+
+            return self.sql(to_hex)
+
+        def timestamptrunc_sql(self, expression: exp.TimestampTrunc) -> str:
+            unit = unit_to_str(expression)
+            zone = expression.args.get("zone")
+            timestamp = expression.this
+
+            if is_date_unit(unit) and zone:
+                # BigQuery's TIMESTAMP_TRUNC with timezone truncates in the target timezone and returns as UTC.
+                # Double AT TIME ZONE needed for BigQuery compatibility:
+                # 1. First AT TIME ZONE: ensures truncation happens in the target timezone
+                # 2. Second AT TIME ZONE: converts the DATE result back to TIMESTAMPTZ (preserving time component)
+                timestamp = exp.AtTimeZone(this=timestamp, zone=zone)
+                result_sql = self.func("DATE_TRUNC", unit, timestamp)
+                return self.sql(exp.AtTimeZone(this=result_sql, zone=zone))
+
+            return self.func("DATE_TRUNC", unit, timestamp)

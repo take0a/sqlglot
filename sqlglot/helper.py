@@ -7,7 +7,6 @@ import re
 import sys
 import typing as t
 from collections.abc import Collection, Set
-from contextlib import contextmanager
 from copy import copy
 from difflib import get_close_matches
 from enum import Enum
@@ -143,7 +142,7 @@ def csv(*args: str, sep: str = ", ") -> str:
 def subclasses(
     module_name: str,
     classes: t.Type | t.Tuple[t.Type, ...],
-    exclude: t.Type | t.Tuple[t.Type, ...] = (),
+    exclude: t.Set[t.Type] = set(),
 ) -> t.List[t.Type]:
     """
     Returns all subclasses for a collection of classes, possibly excluding some of them.
@@ -151,7 +150,7 @@ def subclasses(
     Args:
         module_name: The name of the module to search for subclasses in.
         classes: Class(es) we want to find the subclasses of.
-        exclude: Class(es) we want to exclude from the returned list.
+        exclude: Classes we want to exclude from the returned list.
 
     Returns:
         The target subclasses.
@@ -273,47 +272,6 @@ def tsort(dag: t.Dict[T, t.Set[T]]) -> t.List[T]:
         result.extend(sorted(current))  # type: ignore
 
     return result
-
-
-def open_file(file_name: str) -> t.TextIO:
-    """Open a file that may be compressed as gzip and return it in universal newline mode."""
-    with open(file_name, "rb") as f:
-        gzipped = f.read(2) == b"\x1f\x8b"
-
-    if gzipped:
-        import gzip
-
-        return gzip.open(file_name, "rt", newline="")
-
-    return open(file_name, encoding="utf-8", newline="")
-
-
-@contextmanager
-def csv_reader(read_csv: exp.ReadCSV) -> t.Any:
-    """
-    Returns a csv reader given the expression `READ_CSV(name, ['delimiter', '|', ...])`.
-
-    Args:
-        read_csv: A `ReadCSV` function call.
-
-    Yields:
-        A python csv reader.
-    """
-    args = read_csv.expressions
-    file = open_file(read_csv.name)
-
-    delimiter = ","
-    args = iter(arg.name for arg in args)  # type: ignore
-    for k, v in zip(args, args):
-        if k == "delimiter":
-            delimiter = v
-
-    try:
-        import csv as csv_
-
-        yield csv_.reader(file, delimiter=delimiter)
-    finally:
-        file.close()
 
 
 def find_new_name(taken: t.Collection[str], base: str) -> str:

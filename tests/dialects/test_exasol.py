@@ -5,6 +5,12 @@ class TestExasol(Validator):
     dialect = "exasol"
     maxDiff = None
 
+    def test_exasol(self):
+        self.validate_identity(
+            "SELECT 1 AS [x]",
+            'SELECT 1 AS "x"',
+        )
+
     def test_type_mappings(self):
         self.validate_identity("CAST(x AS BLOB)", "CAST(x AS VARCHAR)")
         self.validate_identity("CAST(x AS LONGBLOB)", "CAST(x AS VARCHAR)")
@@ -418,6 +424,9 @@ class TestExasol(Validator):
                 "databricks": "SELECT DATE_TRUNC('MINUTE', CAST('2006-12-31 23:59:59' AS TIMESTAMP)) AS DATE_TRUNC",
             },
         )
+        self.validate_identity(
+            "SELECT DAY_OF_WEEK('2023-01-01')", "SELECT CAST(TO_CHAR('2023-01-01', 'D') AS INTEGER)"
+        )
 
         from sqlglot.dialects.exasol import DATE_UNITS
 
@@ -586,3 +595,48 @@ class TestExasol(Validator):
         self.validate_identity(
             "SELECT name, age, IF age < 18 THEN 'underaged' ELSE 'adult' ENDIF AS LEGALITY FROM persons"
         )
+
+    def test_odbc_date_literals(self):
+        self.validate_identity("SELECT {d'2024-01-01'}", "SELECT TO_DATE('2024-01-01')")
+        self.validate_identity(
+            "SELECT {ts'2024-01-01 12:00:00'}", "SELECT TO_TIMESTAMP('2024-01-01 12:00:00')"
+        )
+
+    def test_local_prefix_for_alias(self):
+        self.validate_identity(
+            'SELECT ID FROM local WHERE "LOCAL".ID IS NULL',
+            'SELECT ID FROM "LOCAL" WHERE "LOCAL".ID IS NULL',
+        )
+        self.validate_identity(
+            'SELECT YEAR(a_date) AS "a_year" FROM MY_SUMMARY_TABLE GROUP BY LOCAL."a_year"',
+        )
+        self.validate_identity('SELECT a_year AS a_year FROM "LOCAL" GROUP BY "LOCAL".a_year')
+
+        test_cases = [
+            (
+                "GROUP BY alias",
+                "SELECT YEAR(a_date) AS a_year FROM my_table GROUP BY LOCAL.a_year",
+                "SELECT YEAR(a_date) AS a_year FROM my_table GROUP BY a_year",
+            ),
+            (
+                "HAVING alias",
+                "SELECT SUM(amount) AS total FROM my_table HAVING LOCAL.total > 10000",
+                "SELECT SUM(amount) AS total FROM my_table HAVING total > 10000",
+            ),
+            (
+                "WHERE alias",
+                "SELECT YEAR(a_date) AS a_year FROM my_table WHERE LOCAL.a_year > 2020",
+                "SELECT YEAR(a_date) AS a_year FROM my_table WHERE a_year > 2020",
+            ),
+            (
+                "Multiple aliases",
+                "SELECT YEAR(a_date) AS a_year, MONTH(a_date) AS a_month FROM my_table WHERE LOCAL.a_year > 2020 AND LOCAL.a_month < 6",
+                "SELECT YEAR(a_date) AS a_year, MONTH(a_date) AS a_month FROM my_table WHERE a_year > 2020 AND a_month < 6",
+            ),
+        ]
+        for title, exasol_sql, dbx_sql in test_cases:
+            with self.subTest(clause=title):
+                self.validate_all(
+                    exasol_sql,
+                    write={"exasol": exasol_sql, "databricks": dbx_sql},
+                )
