@@ -27,11 +27,14 @@ class ScopeType(Enum):
 class Scope:
     """
     Selection scope.
+    選択範囲。
 
     Attributes:
         expression (exp.Select|exp.SetOperation): Root expression of this scope
+            このスコープのルートの式
         sources (dict[str, exp.Table|Scope]): Mapping of source name to either
             a Table expression or another Scope instance. For example:
+            ソース名をテーブル式または別のスコープインスタンスにマッピングします。例:
                 SELECT * FROM x                     {"x": Table(this="x")}
                 SELECT * FROM x AS y                {"y": Table(this="x")}
                 SELECT * FROM (SELECT ...) AS y     {"y": Scope(...)}
@@ -42,18 +45,29 @@ class Scope:
         cte_sources (dict[str, Scope]): Sources from CTES
         outer_columns (list[str]): If this is a derived table or CTE, and the outer query
             defines a column list for the alias of this scope, this is that list of columns.
+            これが派生テーブルまたは CTE であり、外部クエリがこのスコープのエイリアスの列リストを
+            定義している場合、これはその列のリストになります。
             For example:
                 SELECT * FROM (SELECT ...) AS y(col1, col2)
             The inner query would have `["col1", "col2"]` for its `outer_columns`
+            内部クエリの`outer_columns`には`["col1", "col2"]`が含まれます
         parent (Scope): Parent scope
+            親スコープ
         scope_type (ScopeType): Type of this scope, relative to it's parent
+            このスコープの親に対する相対的なタイプ
         subquery_scopes (list[Scope]): List of all child scopes for subqueries
+            サブクエリのすべての子スコープのリスト
         cte_scopes (list[Scope]): List of all child scopes for CTEs
+            CTE のすべての子スコープのリスト
         derived_table_scopes (list[Scope]): List of all child scopes for derived_tables
+            派生テーブルのすべての子スコープのリスト
         udtf_scopes (list[Scope]): List of all child scopes for user defined tabular functions
+            ユーザー定義の表形式関数のすべての子スコープのリスト
         table_scopes (list[Scope]): derived_table_scopes + udtf_scopes, in the order that they're defined
+            定義された順序で、derived_table_scopes + udtf_scopes
         union_scopes (list[Scope, Scope]): If this Scope is for a Union expression, this will be
             a list of the left and right child scopes.
+            このスコープが Union 式用である場合、これは左と右の子スコープのリストになります。
     """
 
     def __init__(
@@ -106,7 +120,8 @@ class Scope:
     def branch(
         self, expression, scope_type, sources=None, cte_sources=None, lateral_sources=None, **kwargs
     ):
-        """Branch from the current scope to a new, inner scope"""
+        """Branch from the current scope to a new, inner scope
+        現在のスコープから新しい内部スコープに分岐する"""
         return Scope(
             expression=expression.unnest(),
             sources=sources.copy() if sources else None,
@@ -179,8 +194,10 @@ class Scope:
     def replace(self, old, new):
         """
         Replace `old` with `new`.
+        `old` を `new` に置き換えます。
 
         This can be used instead of `exp.Expression.replace` to ensure the `Scope` is kept up-to-date.
+        `exp.Expression.replace` の代わりにこれを使用することで、`Scope` を最新の状態に維持できます。
 
         Args:
             old (exp.Expression): old node
@@ -193,6 +210,7 @@ class Scope:
     def tables(self):
         """
         List of tables in this scope.
+        このスコープ内のテーブルのリスト。
 
         Returns:
             list[exp.Table]: tables
@@ -204,6 +222,7 @@ class Scope:
     def ctes(self):
         """
         List of CTEs in this scope.
+        このスコープ内の CTE のリスト。
 
         Returns:
             list[exp.CTE]: ctes
@@ -215,6 +234,7 @@ class Scope:
     def derived_tables(self):
         """
         List of derived tables in this scope.
+        このスコープ内の派生テーブルのリスト。
 
         For example:
             SELECT * FROM (SELECT ...) <- that's a derived table
@@ -229,6 +249,7 @@ class Scope:
     def udtfs(self):
         """
         List of "User Defined Tabular Functions" in this scope.
+        このスコープ内の「ユーザー定義の表形式関数」のリスト。
 
         Returns:
             list[exp.UDTF]: UDTFs
@@ -240,6 +261,7 @@ class Scope:
     def subqueries(self):
         """
         List of subqueries in this scope.
+        このスコープ内のサブクエリのリスト。
 
         For example:
             SELECT * FROM x WHERE a IN (SELECT ...) <- that's a subquery
@@ -254,6 +276,7 @@ class Scope:
     def stars(self) -> t.List[exp.Column | exp.Dot]:
         """
         List of star expressions (columns or dots) in this scope.
+        このスコープ内のスター式 (列またはドット) のリスト。
         """
         self._ensure_collected()
         return self._stars
@@ -262,10 +285,12 @@ class Scope:
     def columns(self):
         """
         List of columns in this scope.
+        このスコープ内の列のリスト。
 
         Returns:
             list[exp.Column]: Column instances in this scope, plus any
                 Columns that reference this scope from correlated subqueries.
+                このスコープ内の列インスタンスと、相関サブクエリからこのスコープを参照するすべての列。
         """
         if self._columns is None:
             self._ensure_collected()
@@ -325,9 +350,12 @@ class Scope:
     def selected_sources(self):
         """
         Mapping of nodes and sources that are actually selected from in this scope.
+        このスコープ内で実際に選択されるノードとソースのマッピング。
 
         That is, all tables in a schema are selectable at any point. But a
         table only becomes a selected source if it's included in a FROM or JOIN clause.
+        つまり、スキーマ内のすべてのテーブルはいつでも選択可能です。ただし、
+        テーブルが選択されるソースとなるのは、FROM 句または JOIN 句に含まれている場合のみです。
 
         Returns:
             dict[str, (exp.Table|exp.Select, exp.Table|Scope)]: selected sources and nodes
@@ -339,6 +367,7 @@ class Scope:
                 if name in self._semi_anti_join_tables:
                     # The RHS table of SEMI/ANTI joins shouldn't be collected as a
                     # selected source
+                    # SEMI/ANTI結合のRHSテーブルは、選択されたソースとして収集されるべきではない。
                     continue
 
                 if name in result:
@@ -370,10 +399,12 @@ class Scope:
     def external_columns(self):
         """
         Columns that appear to reference sources in outer scopes.
+        外部スコープ内のソースを参照するように見える列。
 
         Returns:
             list[exp.Column]: Column instances that don't reference
                 sources in the current scope.
+                現在のスコープ内のソースを参照しない列インスタンス。
         """
         if self._external_columns is None:
             if isinstance(self.expression, exp.SetOperation):
@@ -393,6 +424,7 @@ class Scope:
     def unqualified_columns(self):
         """
         Unqualified columns in the current scope.
+        現在のスコープ内の修飾されていない列。
 
         Returns:
              list[exp.Column]: Unqualified columns
@@ -403,9 +435,11 @@ class Scope:
     def join_hints(self):
         """
         Hints that exist in the scope that reference tables
+        テーブルを参照するスコープ内に存在するヒント
 
         Returns:
             list[exp.JoinHint]: Join hints that are referenced within the scope
+            list[exp.JoinHint]: スコープ内で参照される結合ヒント
         """
         if self._join_hints is None:
             return []
@@ -427,61 +461,73 @@ class Scope:
     def source_columns(self, source_name):
         """
         Get all columns in the current scope for a particular source.
+        特定のソースの現在のスコープ内のすべての列を取得します。
 
         Args:
             source_name (str): Name of the source
         Returns:
             list[exp.Column]: Column instances that reference `source_name`
+            list[exp.Column]: `source_name` を参照する列インスタンス
         """
         return [column for column in self.columns if column.table == source_name]
 
     @property
     def is_subquery(self):
-        """Determine if this scope is a subquery"""
+        """Determine if this scope is a subquery
+        このスコープがサブクエリであるかどうかを判定する"""
         return self.scope_type == ScopeType.SUBQUERY
 
     @property
     def is_derived_table(self):
-        """Determine if this scope is a derived table"""
+        """Determine if this scope is a derived table
+        このスコープが派生テーブルであるかどうかを判別します"""
         return self.scope_type == ScopeType.DERIVED_TABLE
 
     @property
     def is_union(self):
-        """Determine if this scope is a union"""
+        """Determine if this scope is a union
+        このスコープがユニオンであるかどうかを判定する"""
         return self.scope_type == ScopeType.UNION
 
     @property
     def is_cte(self):
-        """Determine if this scope is a common table expression"""
+        """Determine if this scope is a common table expression
+        このスコープが共通テーブル式であるかどうかを判断します"""
         return self.scope_type == ScopeType.CTE
 
     @property
     def is_root(self):
-        """Determine if this is the root scope"""
+        """Determine if this is the root scope
+        これがルートスコープであるかどうかを判断する"""
         return self.scope_type == ScopeType.ROOT
 
     @property
     def is_udtf(self):
-        """Determine if this scope is a UDTF (User Defined Table Function)"""
+        """Determine if this scope is a UDTF (User Defined Table Function)
+        このスコープがUDTF（ユーザー定義テーブル関数）であるかどうかを判断します"""
         return self.scope_type == ScopeType.UDTF
 
     @property
     def is_correlated_subquery(self):
-        """Determine if this scope is a correlated subquery"""
+        """Determine if this scope is a correlated subquery
+        このスコープが相関サブクエリであるかどうかを判断します"""
         return bool(self.can_be_correlated and self.external_columns)
 
     def rename_source(self, old_name, new_name):
-        """Rename a source in this scope"""
+        """Rename a source in this scope
+        このスコープ内のソースの名前を変更する"""
         columns = self.sources.pop(old_name or "", [])
         self.sources[new_name] = columns
 
     def add_source(self, name, source):
-        """Add a source to this scope"""
+        """Add a source to this scope
+        このスコープにソースを追加する"""
         self.sources[name] = source
         self.clear_cache()
 
     def remove_source(self, name):
-        """Remove a source from this scope"""
+        """Remove a source from this scope
+        このスコープからソースを削除する"""
         self.sources.pop(name, None)
         self.clear_cache()
 
@@ -491,9 +537,11 @@ class Scope:
     def traverse(self):
         """
         Traverse the scope tree from this node.
+        このノードからスコープ ツリーをトラバースします。
 
         Yields:
             Scope: scope instances in depth-first-search post-order
+            Scope: 深さ優先探索のスコープインスタンスを後順で探索する
         """
         stack = [self]
         result = []
@@ -514,9 +562,11 @@ class Scope:
     def ref_count(self):
         """
         Count the number of times each scope in this tree is referenced.
+        このツリー内の各スコープが参照される回数をカウントします。
 
         Returns:
             dict[int, int]: Mapping of Scope instance ID to reference count
+            dict[int, int]: スコープインスタンスIDと参照カウントのマッピング
         """
         scope_ref_count = defaultdict(lambda: 0)
 
@@ -527,6 +577,8 @@ class Scope:
             for name in scope._semi_anti_join_tables:
                 # semi/anti join sources are not actually selected but we still need to
                 # increment their ref count to avoid them being optimized away
+                # セミ/アンチ結合ソースは実際には選択されていませんが、
+                # 最適化によって除去されないように参照カウントを増やす必要があります。
                 if name in scope.sources:
                     scope_ref_count[id(scope.sources[name])] += 1
 
@@ -536,13 +588,18 @@ class Scope:
 def traverse_scope(expression: exp.Expression) -> t.List[Scope]:
     """
     Traverse an expression by its "scopes".
+    式を「スコープ」でトラバースします。
 
     "Scope" represents the current context of a Select statement.
+    「スコープ」はSelect文の現在のコンテキストを表します。
 
     This is helpful for optimizing queries, where we need more information than
     the expression tree itself. For example, we might care about the source
     names within a subquery. Returns a list because a generator could result in
     incomplete properties which is confusing.
+    これは、式ツリー自体よりも多くの情報が必要なクエリの最適化に役立ちます。例えば、
+    サブクエリ内のソース名に注目したい場合などです。ジェネレーターは不完全な
+    プロパティを生成する可能性があり、混乱を招く可能性があるため、リストを返します。
 
     Examples:
         >>> import sqlglot
@@ -558,6 +615,7 @@ def traverse_scope(expression: exp.Expression) -> t.List[Scope]:
 
     Returns:
         A list of the created scope instances
+        作成されたスコープインスタンスのリスト
     """
     if isinstance(expression, TRAVERSABLES):
         return list(_traverse_scope(Scope(expression)))
@@ -567,12 +625,15 @@ def traverse_scope(expression: exp.Expression) -> t.List[Scope]:
 def build_scope(expression: exp.Expression) -> t.Optional[Scope]:
     """
     Build a scope tree.
+    スコープ ツリーを構築します。
 
     Args:
         expression: Expression to build the scope tree for.
+            スコープ ツリーを構築する式。
 
     Returns:
         The root scope
+        ルートスコープ
     """
     return seq_get(traverse_scope(expression), -1)
 
@@ -663,6 +724,8 @@ def _traverse_ctes(scope):
 
         # if the scope is a recursive cte, it must be in the form of base_case UNION recursive.
         # thus the recursive scope is the first section of the union.
+        # スコープが再帰 CTE の場合、base_case UNION recursive の形式にする必要があります。
+        # したがって、再帰スコープはユニオンの最初のセクションになります。
         with_ = scope.expression.args.get("with_")
         if with_ and with_.recursive:
             union = cte.this
@@ -683,6 +746,7 @@ def _traverse_ctes(scope):
             yield child_scope
 
         # append the final child_scope yielded
+        # 最後に得られたchild_scopeを追加する
         if child_scope:
             sources[cte_name] = child_scope
             scope.cte_scopes.append(child_scope)
@@ -696,6 +760,9 @@ def _is_derived_table(expression: exp.Subquery) -> bool:
     We represent (tbl1 JOIN tbl2) as a Subquery, but it's not really a "derived table",
     as it doesn't introduce a new scope. If an alias is present, it shadows all names
     under the Subquery, so that's one exception to this rule.
+    (tbl1 JOIN tbl2) はサブクエリとして表現されていますが、新しいスコープを導入しないため、
+    実際には「派生テーブル」ではありません。エイリアスが存在する場合、サブクエリの下位にある
+    すべての名前がエイリアスによって隠蔽されるため、これはこのルールの例外となります。
     """
     return isinstance(expression, exp.Subquery) and bool(
         expression.alias or isinstance(expression.this, exp.UNWRAPPED_QUERIES)
@@ -705,10 +772,12 @@ def _is_derived_table(expression: exp.Subquery) -> bool:
 def _is_from_or_join(expression: exp.Expression) -> bool:
     """
     Determine if `expression` is the FROM or JOIN clause of a SELECT statement.
+    `expression` が SELECT ステートメントの FROM 句または JOIN 句であるかどうかを判断します。
     """
     parent = expression.parent
 
     # Subqueries can be arbitrarily nested
+    # サブクエリは任意にネストできる
     while isinstance(parent, exp.Subquery):
         parent = parent.parent
 
@@ -719,6 +788,7 @@ def _traverse_tables(scope):
     sources = {}
 
     # Traverse FROMs, JOINs, and LATERALs in the order they are defined
+    # FROM、JOIN、LATERALを定義された順序で走査します。
     expressions = []
     from_ = scope.expression.args.get("from_")
     if from_:
@@ -742,6 +812,8 @@ def _traverse_tables(scope):
             if table_name in scope.sources and not expression.db:
                 # This is a reference to a parent source (e.g. a CTE), not an actual table, unless
                 # it is pivoted, because then we get back a new table and hence a new source.
+                # これは、ピボットされない限り、実際のテーブルではなく、親ソース (CTE など) への参照です。
+                # ピボットされると、新しいテーブル、つまり新しいソースが返されるためです。
                 pivots = expression.args.get("pivots")
                 if pivots:
                     sources[pivots[0].alias] = expression
@@ -753,6 +825,7 @@ def _traverse_tables(scope):
                 sources[source_name] = expression
 
             # Make sure to not include the joins twice
+            # 結合を2回含めないようにしてください
             if expression is not scope.expression:
                 expressions.extend(join.this for join in expression.args.get("joins") or [])
 
@@ -772,6 +845,7 @@ def _traverse_tables(scope):
             expressions.extend(join.this for join in expression.args.get("joins") or [])
         else:
             # Makes sure we check for possible sources in nested table constructs
+            # ネストされたテーブル構造内の可能なソースを確認する
             expressions.append(expression.this)
             expressions.extend(join.this for join in expression.args.get("joins") or [])
             continue
@@ -792,9 +866,14 @@ def _traverse_tables(scope):
             # This shouldn't be a problem once qualify_columns runs, as it adds aliases on everything.
             # Until then, this means that only a single, unaliased derived table is allowed (rather,
             # the latest one wins.
+            # エイリアスのないテーブルは "" として設定されます。
+            # 一度 qualified_columns が実行されると、すべてのテーブルにエイリアスが追加されるため、
+            # これは問題になりません。それまでは、エイリアスのない派生テーブルは 1 つだけ許可されます
+            #  (最新のテーブルが優先されます)。
             sources[_get_source_alias(expression)] = child_scope
 
         # append the final child_scope yielded
+        # 最後に得られたchild_scopeを追加する
         if child_scope:
             scopes.append(child_scope)
             scope.table_scopes.append(child_scope)
@@ -843,19 +922,28 @@ def walk_in_scope(expression, bfs=True, prune=None):
     """
     Returns a generator object which visits all nodes in the syntrax tree, stopping at
     nodes that start child scopes.
+    構文ツリー内のすべてのノードを訪問し、子スコープを開始するノードで停止するジェネレーター 
+    オブジェクトを返します。
 
     Args:
         expression (exp.Expression):
         bfs (bool): if set to True the BFS traversal order will be applied,
             otherwise the DFS traversal will be used instead.
+            True に設定すると BFS トラバーサル順序が適用され、それ以外の場合は代わりに 
+            DFS トラバーサルが使用されます。
         prune ((node, parent, arg_key) -> bool): callable that returns True if
             the generator should stop traversing this branch of the tree.
+            ジェネレーターがツリーのこのブランチのトラバースを停止する必要がある場合に 
+            True を返す呼び出し可能オブジェクト。
 
     Yields:
         tuple[exp.Expression, Optional[exp.Expression], str]: node, parent, arg key
+        tuple[exp.Expression, Optional[exp.Expression], str]: ノード、親、引数キー
     """
     # We'll use this variable to pass state into the dfs generator.
     # Whenever we set it to True, we exclude a subtree from traversal.
+    # この変数を使って、DFSジェネレータに状態を渡します。
+    # Trueに設定すると、サブツリーがトラバーサルから除外されます。
     crossed_scope_boundary = False
 
     for node in expression.walk(
@@ -881,6 +969,7 @@ def walk_in_scope(expression, bfs=True, prune=None):
 
             if isinstance(node, (exp.Subquery, exp.UDTF)):
                 # The following args are not actually in the inner scope, so we should visit them
+                # 次の引数は実際には内部スコープにないので、それらを参照する必要があります。
                 for key in ("joins", "laterals", "pivots"):
                     for arg in node.args.get(key) or []:
                         yield from walk_in_scope(arg, bfs=bfs)
@@ -890,13 +979,17 @@ def find_all_in_scope(expression, expression_types, bfs=True):
     """
     Returns a generator object which visits all nodes in this scope and only yields those that
     match at least one of the specified expression types.
+    このスコープ内のすべてのノードを参照し、指定された式タイプの少なくとも1つに一致するノードのみを
+    生成するジェネレーターオブジェクトを返します。
 
     This does NOT traverse into subscopes.
+    これはサブスコープを走査しません。
 
     Args:
         expression (exp.Expression):
         expression_types (tuple[type]|type): the expression type(s) to match.
         bfs (bool): True to use breadth-first search, False to use depth-first.
+            幅優先探索を使用する場合は True、深さ優先探索を使用する場合は False。
 
     Yields:
         exp.Expression: nodes
@@ -909,17 +1002,21 @@ def find_all_in_scope(expression, expression_types, bfs=True):
 def find_in_scope(expression, expression_types, bfs=True):
     """
     Returns the first node in this scope which matches at least one of the specified types.
+    このスコープ内で、指定された型の少なくとも1つに一致する最初のノードを返します。
 
     This does NOT traverse into subscopes.
+    これはサブスコープを走査しません。
 
     Args:
         expression (exp.Expression):
         expression_types (tuple[type]|type): the expression type(s) to match.
         bfs (bool): True to use breadth-first search, False to use depth-first.
+            幅優先探索を使用する場合は True、深さ優先探索を使用する場合は False。
 
     Returns:
         exp.Expression: the node which matches the criteria or None if no node matching
         the criteria was found.
+        exp.Expression: 条件に一致するノード。条件に一致するノードが見つからなかった場合は None。
     """
     return next(find_all_in_scope(expression, expression_types, bfs=bfs), None)
 

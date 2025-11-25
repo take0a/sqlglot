@@ -93,6 +93,7 @@ class Redshift(Postgres):
             consume_pipe: bool = False,
         ) -> t.Optional[exp.Expression]:
             # Redshift supports UNPIVOTing SUPER objects, e.g. `UNPIVOT foo.obj[0] AS val AT attr`
+            # RedshiftはSUPERオブジェクトのUNPIVOTをサポートしています。例: `UNPIVOT foo.obj[0] AS val AT attr`
             unpivot = self._match(TokenType.UNPIVOT)
             table = super()._parse_table(
                 schema=schema,
@@ -140,6 +141,7 @@ class Redshift(Postgres):
         KEYWORDS.pop("VALUES")
 
         # Redshift allows # to appear as a table identifier prefix
+        # Redshiftではテーブル識別子のプレフィックスとして#を使用できます
         SINGLE_TOKENS = Postgres.Tokenizer.SINGLE_TOKENS.copy()
         SINGLE_TOKENS.pop("#")
 
@@ -165,6 +167,7 @@ class Redshift(Postgres):
         LIMIT_FETCH = "LIMIT"
 
         # Redshift doesn't have `WITH` as part of their with_properties so we remove it
+        # Redshiftにはwith_propertiesの一部として`WITH`がないので削除します
         WITH_PROPERTIES_PREFIX = " "
 
         TYPE_MAPPING = {
@@ -221,12 +224,15 @@ class Redshift(Postgres):
         }
 
         # Postgres maps exp.Pivot to no_pivot_sql, but Redshift support pivots
+        # Postgresはexp.Pivotをno_pivot_sqlにマッピングしますが、Redshiftはピボットをサポートします
         TRANSFORMS.pop(exp.Pivot)
 
         # Postgres doesn't support JSON_PARSE, but Redshift does
+        # PostgresはJSON_PARSEをサポートしていませんが、Redshiftはサポートしています
         TRANSFORMS.pop(exp.ParseJSON)
 
         # Redshift supports these functions
+        # Redshiftはこれらの機能をサポートしています
         TRANSFORMS.pop(exp.AnyValue)
         TRANSFORMS.pop(exp.LastDay)
         TRANSFORMS.pop(exp.SHA2)
@@ -421,6 +427,9 @@ class Redshift(Postgres):
             VARCHAR of max length which is `VARCHAR(max)` in Redshift. Therefore if we get a `TEXT` data type
             without precision we convert it to `VARCHAR(max)` and if it does have precision then we just convert
             `TEXT` to `VARCHAR`.
+            Redshiftはデフォルトで`TEXT`データ型を`VARCHAR(255)`に変換しますが、これは一般的にはRedshiftで最大長の
+            `VARCHAR(max)`を指すものです。したがって、精度のない`TEXT`データ型を取得した場合は`VARCHAR(max)`に変換し、
+            精度のある場合は`TEXT`を`VARCHAR`に変換します。
             """
             if expression.is_type("text"):
                 expression.set("this", exp.DataType.Type.VARCHAR)

@@ -60,6 +60,7 @@ def _no_sort_array(self: Presto.Generator, expression: exp.SortArray) -> str:
 def _schema_sql(self: Presto.Generator, expression: exp.Schema) -> str:
     if isinstance(expression.parent, exp.PartitionedByProperty):
         # Any columns in the ARRAY[] string literals should not be quoted
+        # ARRAY[]文字列リテラル内の列は引用符で囲まないでください。
         expression.transform(lambda n: n.name if isinstance(n, exp.Identifier) else n, copy=False)
 
         partition_exprs = [
@@ -146,6 +147,8 @@ def _first_last_sql(self: Presto.Generator, expression: exp.Func) -> str:
     Trino doesn't support FIRST / LAST as functions, but they're valid in the context
     of MATCH_RECOGNIZE, so we need to preserve them in that case. In all other cases
     they're converted into an ARBITRARY call.
+    TrinoはFIRST / LASTを関数としてサポートしていませんが、MATCH_RECOGNIZEのコンテキストでは有効
+    なので、その場合は保持する必要があります。それ以外の場合は、ARBITRARY呼び出しに変換されます。
 
     Reference: https://trino.io/docs/current/sql/match-recognize.html#logical-navigation-functions
     """
@@ -178,9 +181,11 @@ def _build_to_char(args: t.List) -> exp.TimeToStr:
     fmt = seq_get(args, 1)
     if isinstance(fmt, exp.Literal):
         # We uppercase this to match Teradata's format mapping keys
+        # これを大文字にすると、Teradataのフォーマットマッピングキーと一致する。
         fmt.set("this", fmt.this.upper())
 
     # We use "teradata" on purpose here, because the time formats are different in Presto.
+    # Presto では時間形式が異なるため、ここでは意図的に「teradata」を使用します。
     # See https://prestodb.io/docs/current/functions/teradata.html?highlight=to_char#to_char
     return build_formatted_time(exp.TimeToStr, "teradata")(args)
 
@@ -207,6 +212,7 @@ def _explode_to_unnest_sql(self: Presto.Generator, expression: exp.Lateral) -> s
         alias = expression.args.get("alias")
 
         # This attempts a best-effort transpilation of LATERAL VIEW EXPLODE on a struct array
+        # これは、構造体配列上でLATERAL VIEW EXPLODEのベストエフォートトランスパイルを試みます。
         if (
             isinstance(alias, exp.TableAlias)
             and isinstance(exploded_type, exp.DataType)
@@ -215,6 +221,7 @@ def _explode_to_unnest_sql(self: Presto.Generator, expression: exp.Lateral) -> s
             and exploded_type.expressions[0].is_type(exp.DataType.Type.STRUCT)
         ):
             # When unnesting a ROW in Presto, it produces N columns, so we need to fix the alias
+            # PrestoでROWをアンネストするとN列が生成されるので、エイリアスを修正する必要がある。
             alias.set("columns", [c.this.copy() for c in exploded_type.expressions[0].expressions])
     elif isinstance(explode, exp.Inline):
         explode.replace(exp.Explode(this=explode.this.copy()))
@@ -224,6 +231,7 @@ def _explode_to_unnest_sql(self: Presto.Generator, expression: exp.Lateral) -> s
 
 def amend_exploded_column_table(expression: exp.Expression) -> exp.Expression:
     # We check for expression.type because the columns can be amended only if types were inferred
+    # 列は型が推論された場合にのみ修正できるため、expression.typeをチェックします。
     if isinstance(expression, exp.Select) and expression.type:
         for lateral in expression.args.get("laterals") or []:
             alias = lateral.args.get("alias")
@@ -239,6 +247,8 @@ def amend_exploded_column_table(expression: exp.Expression) -> exp.Expression:
 
             # When transpiling a LATERAL VIEW EXPLODE Spark query, the exploded fields may be qualified
             # with the struct column, resulting in invalid Presto references that need to be amended
+            # LATERAL VIEW EXPLODE Sparkクエリをトランスパイルする場合、展開されたフィールドが構造体列で修飾され、
+            # 修正が必要な無効なPresto参照が発生する可能性があります。
             for column in find_all_in_scope(expression, exp.Column):
                 if column.db.lower() == old_table:
                     column.set("table", column.args["db"].pop())
@@ -635,6 +645,10 @@ class Presto(Dialect):
             # To do this, we first try to `DATE_PARSE` it, but since this can fail when there's a
             # timezone involved, we wrap it in a `TRY` call and use `PARSE_DATETIME` as a fallback,
             # which seems to be using the same time mapping as Hive, as per:
+            # `TO_UNIXTIME` には `TIMESTAMP` が必要なので、引数を 1 つに解析する必要があります。
+            # これを行うには、まず `DATE_PARSE` を試みますが、タイムゾーンが関係している場合は
+            # 失敗する可能性があるため、`TRY` 呼び出しでラップし、`PARSE_DATETIME` をフォールバック
+            # として使用します。これは、次のように Hive と同じ時間マッピングを使用しているようです。
             # https://joda-time.sourceforge.net/apidocs/org/joda/time/format/DateTimeFormat.html
             this = expression.this
             value_as_text = exp.cast(this, exp.DataType.Type.TEXT)
@@ -722,6 +736,8 @@ class Presto(Dialect):
             """
             Presto doesn't support CREATE VIEW with expressions (ex: `CREATE VIEW x (cola)` then `(cola)` is the expression),
             so we need to remove them
+            Prestoは式を使ったCREATE VIEWをサポートしていない（例：`CREATE VIEW x (cola)`の場合は
+            `(cola)`が式）ので、それらを削除する必要がある。
             """
             kind = expression.args["kind"]
             schema = expression.this
@@ -734,6 +750,9 @@ class Presto(Dialect):
             Presto only supports DELETE FROM for a single table without an alias, so we need
             to remove the unnecessary parts. If the original DELETE statement contains more
             than one table to be deleted, we can't safely map it 1-1 to a Presto statement.
+            Presto はエイリアスのない単一のテーブルに対する DELETE FROM のみをサポートしているため、
+            不要な部分を削除する必要があります。元の DELETE 文に削除対象のテーブルが複数含まれている場合、
+            Presto 文に 1 対 1 で安全にマッピングすることはできません。
             """
             tables = expression.args.get("tables") or [expression.this]
             if len(tables) > 1:
@@ -756,6 +775,8 @@ class Presto(Dialect):
 
             # Generate JSON_EXTRACT unless the user has configured that a Snowflake / Databricks
             # VARIANT extract (e.g. col:x.y) should map to dot notation (i.e ROW access) in Presto/Trino
+            # ユーザーがSnowflake / Databricks VARIANT抽出（例：col:x.y）をPresto / Trinoのドット表記
+            # （ROWアクセス）にマッピングするように設定していない限り、JSON_EXTRACTを生成します。
             if not expression.args.get("variant_extract") or is_json_extract:
                 return self.func(
                     "JSON_EXTRACT", expression.this, expression.expression, *expression.expressions
@@ -764,10 +785,12 @@ class Presto(Dialect):
             this = self.sql(expression, "this")
 
             # Convert the JSONPath extraction `JSON_EXTRACT(col, '$.x.y) to a ROW access col.x.y
+            # JSONPath抽出`JSON_EXTRACT(col, '$.x.y)をROWアクセスcol.x.yに変換します。
             segments = []
             for path_key in expression.expression.expressions[1:]:
                 if not isinstance(path_key, exp.JSONPathKey):
                     # Cannot transpile subscripts, wildcards etc to dot notation
+                    # 下付き文字やワイルドカードなどをドット表記に変換できない
                     self.unsupported(
                         f"Cannot transpile JSONPath segment '{path_key}' to ROW access"
                     )

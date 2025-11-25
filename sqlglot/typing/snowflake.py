@@ -24,6 +24,7 @@ def _annotate_timestamp_from_parts(
     self: TypeAnnotator, expression: exp.TimestampFromParts
 ) -> exp.TimestampFromParts:
     """Annotate TimestampFromParts with correct type based on arguments.
+    引数に基づいて正しい型で TimestampFromParts に注釈を付けます。
     TIMESTAMP_FROM_PARTS with time_zone -> TIMESTAMPTZ
     TIMESTAMP_FROM_PARTS without time_zone -> TIMESTAMP (defaults to TIMESTAMP_NTZ)
     """
@@ -52,20 +53,26 @@ def _annotate_date_or_time_add(self: TypeAnnotator, expression: exp.Expression) 
 
 def _annotate_decode_case(self: TypeAnnotator, expression: exp.DecodeCase) -> exp.DecodeCase:
     """Annotate DecodeCase with the type inferred from return values only.
+    DecodeCase には、戻り値のみから推論される型をアノテーションで指定します。
 
     DECODE uses the format: DECODE(expr, val1, ret1, val2, ret2, ..., default)
     We only look at the return values (ret1, ret2, ..., default) to determine the type,
     not the comparison values (val1, val2, ...) or the expression being compared.
+    DECODE は、DECODE(expr, val1, ret1, val2, ret2, ..., default) という形式を使用します。
+    型を決定するために参照するのは戻り値 (ret1, ret2, ..., default) のみであり、
+    比較値 (val1, val2, ...) や比較対象の式は参照しません。
     """
     self._annotate_args(expression)
 
     expressions = expression.expressions
 
     # Return values are at indices 2, 4, 6, ... and the last element (if even length)
+    # 戻り値はインデックス2、4、6、…および最後の要素（長さが偶数の場合）です。
     # DECODE(expr, val1, ret1, val2, ret2, ..., default)
     return_types = [expressions[i].type for i in range(2, len(expressions), 2)]
 
     # If the total number of expressions is even, the last one is the default
+    # 式の総数が偶数の場合、最後の式がデフォルトとなる。
     # Example:
     #   DECODE(x, 1, 'a', 2, 'b')             -> len=5 (odd), no default
     #   DECODE(x, 1, 'a', 2, 'b', 'default')  -> len=6 (even), has default
@@ -73,6 +80,7 @@ def _annotate_decode_case(self: TypeAnnotator, expression: exp.DecodeCase) -> ex
         return_types.append(expressions[-1].type)
 
     # Determine the common type from all return values
+    # すべての戻り値から共通の型を決定する
     last_type = None
     for ret_type in return_types:
         last_type = self._maybe_coerce(last_type or ret_type, ret_type)
@@ -85,18 +93,24 @@ def _annotate_arg_max_min(
     self: TypeAnnotator, expression: exp.ArgMax | exp.ArgMin
 ) -> exp.ArgMax | exp.ArgMin:
     """Annotate ArgMax/ArgMin with type based on argument count.
+    引数 count に基づいて、ArgMax/ArgMin に型をアノテーションします。
 
     When count argument is provided (3 arguments), returns ARRAY of the first argument's type.
     When count is not provided (2 arguments), returns the first argument's type.
+    count 引数が指定された場合（引数が 3 つ）、最初の引数の型の配列を返します。
+    count 引数が指定されなかった場合（引数が 2 つ）、最初の引数の型を返します。
     """
     return self._annotate_by_args(expression, "this", array=bool(expression.args.get("count")))
 
 
 def _annotate_within_group(self: TypeAnnotator, expression: exp.WithinGroup) -> exp.WithinGroup:
     """Annotate WithinGroup with correct type based on the inner function.
+    内部関数に基づいて、WithinGroup に正しい型をアノテーションします。
 
     1) Annotate args first
     2) Check if this is PercentileDisc and if so, re-annotate its type to match the ordered expression's type
+    1) まず args をアノテーションします。
+    2) これが PercentileDisc かどうかを確認し、そうであれば、順序付けされた式の型と一致するように型を再度アノテーションします。
     """
     self._annotate_args(expression)
 

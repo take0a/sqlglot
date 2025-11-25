@@ -2,6 +2,7 @@ import typing as t
 import datetime
 
 # The generic time format is based on python time.strftime.
+# 一般的な時間形式は、python time.strftime に基づいています。
 # https://docs.python.org/3/library/time.html#time.strftime
 from sqlglot.trie import TrieResult, in_trie, new_trie
 
@@ -11,6 +12,7 @@ def format_time(
 ) -> t.Optional[str]:
     """
     Converts a time string given a mapping.
+    マッピングを指定して時間文字列を変換します。
 
     Examples:
         >>> format_time("%Y", {"%Y": "YYYY"})
@@ -18,10 +20,13 @@ def format_time(
 
         Args:
             mapping: dictionary of time format to target time format.
+                ターゲットの時間形式に対する時間形式の辞書。
             trie: optional trie, can be passed in for performance.
+                オプションのトライは、パフォーマンスのために渡すことができます。
 
         Returns:
             The converted time string.
+            変換された時刻文字列。
     """
     if not string:
         return None
@@ -668,11 +673,20 @@ def subsecond_precision(timestamp_literal: str) -> int:
     """
     Given an ISO-8601 timestamp literal, eg '2023-01-01 12:13:14.123456+00:00'
     figure out its subsecond precision so we can construct types like DATETIME(6)
+    ISO-8601タイムスタンプリテラル、例えば「2023-01-01 12:13:14.123456+00:00」が与えられた場合、
+    その秒未満の精度を計算して、DATETIME(6)のような型を構築することができます。
 
     Note that in practice, this is either 3 or 6 digits (3 = millisecond precision, 6 = microsecond precision)
     - 6 is the maximum because strftime's '%f' formats to microseconds and almost every database supports microsecond precision in timestamps
     - Except Presto/Trino which in most cases only supports millisecond precision but will still honour '%f' and format to microseconds (replacing the remaining 3 digits with 0's)
     - Python prior to 3.11 only supports 0, 3 or 6 digits in a timestamp literal. Any other amounts will throw a 'ValueError: Invalid isoformat string:' error
+    実際には、これは3桁または6桁（3 = ミリ秒精度、6 = マイクロ秒精度）であることに注意してください。
+    - strftime の '%f' はマイクロ秒精度にフォーマットされ、ほぼすべてのデータベースが
+      タイムスタンプでマイクロ秒精度をサポートしているため、6桁が最大値です。
+    - Presto/Trino はほとんどの場合ミリ秒精度のみをサポートしますが、'%f' は考慮され、
+      マイクロ秒精度にフォーマットされます（残りの3桁は0に置き換えられます）。
+    - Python 3.11 より前のバージョンでは、タイムスタンプリテラルで0、3、または6桁のみがサポートされています。
+      それ以外の数値を指定すると、「ValueError: Invalid isoformat string:」エラーが発生します。
     """
     try:
         parsed = datetime.datetime.fromisoformat(timestamp_literal)

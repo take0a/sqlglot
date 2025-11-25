@@ -16,10 +16,12 @@ if t.TYPE_CHECKING:
     from sqlglot.dialects.dialect import DialectType
 
 # Sentinel value that means an outer query selecting ALL columns
+# すべての列を選択する外部クエリを意味するセンチネル値
 SELECT_ALL = object()
 
 
 # Selection to use if selection list is empty
+# 選択リストが空の場合に使用する選択
 def default_selection(is_agg: bool) -> exp.Alias:
     return alias(exp.Max(this=exp.Literal.number(1)) if is_agg else "1", "_")
 
@@ -32,6 +34,7 @@ def pushdown_projections(
 ) -> E:
     """
     Rewrite sqlglot AST to remove unused columns projections.
+    未使用の列投影を削除するために sqlglot AST を書き換えます。
 
     Example:
         >>> import sqlglot
@@ -42,11 +45,15 @@ def pushdown_projections(
 
     Args:
         expression (sqlglot.Expression): expression to optimize
+            最適化する式
         remove_unused_selections (bool): remove selects that are unused
+            使用されていない選択を削除する
     Returns:
         sqlglot.Expression: optimized expression
+        sqlglot.Expression: 最適化された式
     """
     # Map of Scope to all columns being selected by outer queries.
+    # 外部クエリによって選択されるすべての列へのスコープのマップ。
     schema = ensure_schema(schema, dialect=dialect)
     source_column_alias_count: t.Dict[exp.Expression | Scope, int] = {}
     referenced_columns: t.DefaultDict[Scope, t.Set[str | object]] = defaultdict(set)
@@ -54,11 +61,14 @@ def pushdown_projections(
     # We build the scope tree (which is traversed in DFS postorder), then iterate
     # over the result in reverse order. This should ensure that the set of selected
     # columns for a particular scope are completely build by the time we get to it.
+    # スコープツリーを構築し（DFS後順序で走査されます）、その結果を逆順に反復処理します。
+    # これにより、特定のスコープに到達するまでに、選択された列のセットが完全に構築されることが保証されます。
     for scope in reversed(traverse_scope(expression)):
         parent_selections = referenced_columns.get(scope, {SELECT_ALL})
         alias_count = source_column_alias_count.get(scope, 0)
 
         # We can't remove columns SELECT DISTINCT nor UNION DISTINCT.
+        # SELECT DISTINCT 列も UNION DISTINCT 列も削除できません。
         if scope.expression.args.get("distinct"):
             parent_selections = {SELECT_ALL}
 
@@ -67,6 +77,8 @@ def pushdown_projections(
             if not (set_op.kind or set_op.side):
                 # Do not optimize this set operation if it's using the BigQuery specific
                 # kind / side syntax (e.g INNER UNION ALL BY NAME) which changes the semantics of the operation
+                # BigQuery 固有の種類 / サイド構文 (例: INNER UNION ALL BY NAME) を使用して
+                # 操作のセマンティクスを変更する場合は、このセット操作を最適化しないでください。
                 left, right = scope.union_scopes
                 if len(left.expression.selects) != len(right.expression.selects):
                     scope_sql = scope.expression.sql(dialect=dialect)
@@ -97,6 +109,7 @@ def pushdown_projections(
                 continue
 
             # Group columns by source name
+            # ソース名で列をグループ化する
             selects = defaultdict(set)
             for col in scope.columns:
                 table_name = col.table
@@ -104,6 +117,7 @@ def pushdown_projections(
                 selects[table_name].add(col_name)
 
             # Push the selected columns down to the next scope
+            # 選択した列を次のスコープにプッシュします
             for name, (node, source) in scope.selected_sources.items():
                 if isinstance(source, Scope):
                     select = seq_get(source.expression.selects, 0)
@@ -127,6 +141,7 @@ def _remove_unused_selections(scope, parent_selections, schema, alias_count):
 
     if order:
         # Assume columns without a qualified table are references to output columns
+        # 修飾されたテーブルのない列は出力列への参照であると想定します
         order_refs = {c.name for c in order.find_all(exp.Column) if not c.table}
     else:
         order_refs = set()
@@ -163,6 +178,7 @@ def _remove_unused_selections(scope, parent_selections, schema, alias_count):
                 )
 
     # If there are no remaining selections, just select a single constant
+    # 残りの選択肢がない場合は、定数を1つだけ選択してください
     if not new_selections:
         new_selections.append(default_selection(is_agg))
 

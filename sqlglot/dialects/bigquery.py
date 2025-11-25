@@ -70,6 +70,7 @@ def _derived_table_values_to_unnest(self: BigQuery.Generator, expression: exp.Va
         structs.append(exp.Struct(expressions=expressions))
 
     # Due to `UNNEST_COLUMN_ONLY`, it is expected that the table alias be contained in the columns expression
+    # `UNNEST_COLUMN_ONLY` のため、テーブル別名が列式に含まれていることが想定されます。
     alias_name_only = exp.TableAlias(columns=[alias.this]) if alias else None
     return self.unnest_sql(
         exp.Unnest(expressions=[exp.array(*structs, copy=False)], alias=alias_name_only)
@@ -98,6 +99,7 @@ def _create_sql(self: BigQuery.Generator, expression: exp.Create) -> str:
 
 # https://issuetracker.google.com/issues/162294746
 # workaround for bigquery bug when grouping by an expression and then ordering
+# 式でグループ化してから順序付けをするときの BigQuery のバグの回避策
 # WITH x AS (SELECT 1 y)
 # SELECT y + 1 z
 # FROM x
@@ -126,7 +128,8 @@ def _alias_ordered_group(expression: exp.Expression) -> exp.Expression:
 
 
 def _pushdown_cte_column_names(expression: exp.Expression) -> exp.Expression:
-    """BigQuery doesn't allow column names when defining a CTE, so we try to push them down."""
+    """BigQuery doesn't allow column names when defining a CTE, so we try to push them down.
+    BigQuery では、CTE を定義するときに列名を使用できないため、列名をプッシュダウンしようとします。"""
     if isinstance(expression, exp.CTE) and expression.alias_column_names:
         cte_query = expression.this
 
@@ -322,6 +325,8 @@ def _build_format_time(expr_type: t.Type[exp.Expression]) -> t.Callable[[t.List]
 def _build_contains_substring(args: t.List) -> exp.Contains:
     # Lowercase the operands in case of transpilation, as exp.Contains
     # is case-sensitive on other dialects
+    # exp.Contains は他の方言では大文字と小文字を区別するため、
+    # トランスパイルする場合はオペランドを小文字にします。
     this = exp.Lower(this=seq_get(args, 0))
     expr = exp.Lower(this=seq_get(args, 1))
 
@@ -388,12 +393,14 @@ class BigQuery(Dialect):
     }
 
     # The _PARTITIONTIME and _PARTITIONDATE pseudo-columns are not returned by a SELECT * statement
+    # _PARTITIONTIMEおよび_PARTITIONDATE疑似列はSELECT *文では返されません。
     # https://cloud.google.com/bigquery/docs/querying-partitioned-tables#query_an_ingestion-time_partitioned_table
     # https://cloud.google.com/bigquery/docs/querying-wildcard-tables#scanning_a_range_of_tables_using_table_suffix
     # https://cloud.google.com/bigquery/docs/query-cloud-storage-data#query_the_file_name_pseudo-column
     PSEUDOCOLUMNS = {"_PARTITIONTIME", "_PARTITIONDATE", "_TABLE_SUFFIX", "_FILE_NAME"}
 
     # All set operations require either a DISTINCT or ALL specifier
+    # すべてのセット演算にはDISTINCTまたはALL指定子が必要です
     SET_OP_DISTINCT_BY_DEFAULT = dict.fromkeys((exp.Except, exp.Intersect, exp.Union), None)
 
     # https://cloud.google.com/bigquery/docs/reference/standard-sql/navigation_functions#percentile_cont
@@ -419,6 +426,10 @@ class BigQuery(Dialect):
             # by default. The following check uses a heuristic to detect tables based on whether
             # they are qualified. This should generally be correct, because tables in BigQuery
             # must be qualified with at least a dataset, unless @@dataset_id is set.
+            # BigQueryでは、CTEは大文字と小文字を区別しませんが、UDFとテーブル名はデフォルトで大文字と小文字を
+            # 区別します。以下のチェックでは、テーブルが修飾されているかどうかに基づいてヒューリスティックな方法で
+            # テーブルを検出します。BigQueryのテーブルは、@@dataset_idが設定されていない限り、少なくとも
+            # データセットで修飾されている必要があるため、これは概ね正しいはずです。
             case_sensitive = (
                 isinstance(parent, exp.UserDefinedFunction)
                 or (
@@ -493,6 +504,7 @@ class BigQuery(Dialect):
         JOINS_HAVE_EQUAL_PRECEDENCE = True
 
         # BigQuery does not allow ASC/DESC to be used as an identifier, allows GRANT as an identifier
+        # BigQueryでは、ASC/DESCを識別子として使用することはできませんが、GRANTを識別子として使用することはできます。
         ID_VAR_TOKENS = {
             *parser.Parser.ID_VAR_TOKENS,
             TokenType.GRANT,
@@ -772,6 +784,13 @@ class BigQuery(Dialect):
             # be the region/dataset. Merging the two identifiers into a single one is done to
             # avoid producing a 4-part Table reference, which would cause issues in the schema
             # module, when there are 3-part table names mixed with information schema views.
+            # BigQueryの`INFORMATION_SCHEMA`ビューはリージョンまたはデータセットで修飾する必要があるため、
+            # プロジェクト識別子が省略されている場合は、`INFORMATION_SCHEMA.X`ビットが単一の（引用符で囲まれた）
+            # 識別子として表されるようにastを修正する必要があります。そうしないと、これらのビューを参照する
+            # `Table`ノードを正しく修飾できません。「カタログ」部分が設定されているように見えますが、実際には
+            # リージョン/データセットです。2つの識別子を1つに統合するのは、4つの部分からなるテーブル参照が
+            # 生成されることを避けるためです。4つの部分からなるテーブル参照が生成されると、情報スキーマビュー
+            # と3つの部分からなるテーブル名が混在する場合にスキーマモジュールで問題が発生します。
             #
             # See: https://cloud.google.com/bigquery/docs/information-schema-intro#syntax
             table_parts = table.parts
@@ -780,6 +799,10 @@ class BigQuery(Dialect):
                 # This is expected to be safe, because if there's an actual alias coming up in
                 # the token stream, it will overwrite this one. If there isn't one, we are only
                 # exposing the name that can be used to reference the view explicitly (a no-op).
+                # 既存の修飾列を壊さないように、ここでテーブルに別名を付ける必要があります。
+                # トークンストリームに実際の別名が出現した場合、この別名が上書きされるため、
+                # これは安全であると想定されます。別名が出現しない場合は、ビューを明示的に
+                # 参照するために使用できる名前のみを公開します（何も行いません）。
                 exp.alias_(
                     table,
                     t.cast(exp.Identifier, alias or table_parts[-1]),
@@ -829,6 +852,7 @@ class BigQuery(Dialect):
             array_kv_pair = seq_get(json_object.expressions, 0)
 
             # Converts BQ's "signature 2" of JSON_OBJECT into SQLGlot's canonical representation
+            # BQのJSON_OBJECTの「署名2」をSQLGlotの正規表現に変換します。
             # https://cloud.google.com/bigquery/docs/reference/standard-sql/json_functions#json_object_signature2
             if (
                 array_kv_pair
@@ -884,6 +908,8 @@ class BigQuery(Dialect):
 
                 # Unnesting a nested array (i.e array of structs) explodes the top-level struct fields,
                 # in contrast to other dialects such as DuckDB which flattens only the array by default
+                # ネストされた配列（つまり構造体の配列）をアンネストすると、デフォルトで配列のみをフラット化する
+                # DuckDBなどの他の方言とは対照的に、最上位の構造体フィールドが展開されます。
                 if unnest_expr.is_type(exp.DataType.Type.ARRAY) and any(
                     array_elem.is_type(exp.DataType.Type.STRUCT)
                     for array_elem in unnest_expr._type.expressions
@@ -903,6 +929,8 @@ class BigQuery(Dialect):
 
                 # Non-named arguments are filled sequentially, (optionally) followed by named arguments
                 # that can appear in any order e.g MAKE_INTERVAL(1, minute => 5, day => 2)
+                # 名前のない引数は順番に入力され、その後に任意の順序で表示できる名前付き引数が続きます (オプション)。
+                # 例: MAKE_INTERVAL(1, minute => 5, day => 2)
                 if isinstance(value, exp.Kwarg):
                     arg_key = value.this.name
 
@@ -920,6 +948,7 @@ class BigQuery(Dialect):
             self._match_text_seq("TABLE")
 
             # Certain functions like ML.FORECAST require a STRUCT argument but not a TABLE/SELECT one
+            # ML.FORECASTのような特定の関数は、STRUCT引数を必要としますが、TABLE/SELECT引数は必要ありません。
             expression = (
                 self._parse_table() if not self._match(TokenType.STRUCT, advance=False) else None
             )
@@ -936,6 +965,7 @@ class BigQuery(Dialect):
 
         def _parse_translate(self) -> exp.Translate | exp.MLTranslate:
             # Check if this is ML.TRANSLATE by looking at previous tokens
+            # 以前のトークンを見て、これが ML.TRANSLATE であるかどうかを確認します。
             token = seq_get(self._tokens, self._index - 4)
             if token and token.text.upper() == "ML":
                 return self._parse_ml(exp.MLTranslate)
@@ -953,6 +983,8 @@ class BigQuery(Dialect):
 
                 # Get the LHS of the Kwarg and set the arg to that value, e.g
                 # "num_rows => 1" sets the expr's `num_rows` arg
+                # KwargのLHSを取得し、その値を引数に設定します。例えば、
+                # "num_rows => 1"はexprの`num_rows`引数を設定します。
                 if arg:
                     expr.set(arg.this.name, arg)
 
@@ -979,6 +1011,7 @@ class BigQuery(Dialect):
 
             while self._match(TokenType.COMMA):
                 # query_column_to_search can be named argument or positional
+                # query_column_to_search は名前付き引数または位置引数にすることができます
                 if self._match(TokenType.STRING, advance=False):
                     query_column = self._parse_string()
                     expr.set("query_column_to_search", query_column)
@@ -1332,6 +1365,8 @@ class BigQuery(Dialect):
             if expression.meta.get("quoted_column"):
                 # If a column reference is of the form `dataset.table`.name, we need
                 # to preserve the quoted table path, otherwise the reference breaks
+                # 列参照が`dataset.table`.nameの形式の場合、引用符で囲まれたテーブルパスを
+                # 保持する必要があります。そうしないと参照が壊れます。
                 table_parts = ".".join(p.name for p in expression.parts[:-1])
                 table_path = self.sql(exp.Identifier(this=table_parts, quoted=True))
                 return f"{table_path}.{self.sql(expression, 'this')}"
@@ -1341,9 +1376,13 @@ class BigQuery(Dialect):
         def table_parts(self, expression: exp.Table) -> str:
             # Depending on the context, `x.y` may not resolve to the same data source as `x`.`y`, so
             # we need to make sure the correct quoting is used in each case.
+            # コンテキストによっては、`x.y` が `x`.`y` と同じデータソースに解決されない場合があるため、
+            # それぞれのケースで正しい引用符が使用されていることを確認する必要があります。
             #
             # For example, if there is a CTE x that clashes with a schema name, then the former will
             # return the table y in that schema, whereas the latter will return the CTE's y column:
+            # たとえば、スキーマ名と競合する CTE x がある場合、前者はそのスキーマ内のテーブル y を返しますが、
+            # 後者は CTE の y 列を返します。
             #
             # - WITH x AS (SELECT [1, 2] AS y) SELECT * FROM x, `x.y`   -> cross join
             # - WITH x AS (SELECT [1, 2] AS y) SELECT * FROM x, `x`.`y` -> implicit unnest
@@ -1371,6 +1410,7 @@ class BigQuery(Dialect):
 
         def eq_sql(self, expression: exp.EQ) -> str:
             # Operands of = cannot be NULL in BigQuery
+            # BigQueryでは=のオペランドはNULLにできません
             if isinstance(expression.left, exp.Null) or isinstance(expression.right, exp.Null):
                 if not isinstance(expression.parent, exp.Update):
                     return "NULL"
@@ -1382,6 +1422,8 @@ class BigQuery(Dialect):
 
             # BigQuery allows CAST(.. AS {STRING|TIMESTAMP} [FORMAT <fmt> [AT TIME ZONE <tz>]]).
             # Only the TIMESTAMP one should use the below conversion, when AT TIME ZONE is included.
+            # BigQueryでは、CAST(.. AS {STRING|TIMESTAMP} [FORMAT <fmt> [AT TIME ZONE <tz>]]) が許可されます。
+            # AT TIME ZONE が含まれる場合、TIMESTAMP の場合のみ、以下の変換を使用する必要があります。
             if not isinstance(parent, exp.Cast) or not parent.to.is_type("text"):
                 return self.func(
                     "TIMESTAMP", self.func("DATETIME", expression.this, expression.args.get("zone"))
@@ -1405,6 +1447,7 @@ class BigQuery(Dialect):
 
                 if arg.type and arg.type.this in exp.DataType.TEXT_TYPES:
                     # BQ doesn't support bracket syntax with string values for structs
+                    # BQ は構造体の文字列値を含む括弧構文をサポートしていません
                     return f"{self.sql(this)}.{arg.name}"
 
             expressions_sql = self.expressions(expression, flat=True)
@@ -1446,6 +1489,9 @@ class BigQuery(Dialect):
             # This ensures that inline type-annotated ARRAY literals like ARRAY<INT64>[1, 2, 3]
             # are roundtripped unaffected. The inner check excludes ARRAY(SELECT ...) expressions,
             # because they aren't literals and so the above syntax is invalid BigQuery.
+            # これにより、ARRAY<INT64>[1, 2, 3] のようなインライン型アノテーション付き ARRAY リテラルが
+            # ラウンドトリップ処理の影響を受けないことが保証されます。ARRAY(SELECT ...) 式はリテラルでは
+            # ないため、内部チェックでは除外されます。そのため、上記の構文は BigQuery では無効です。
             if isinstance(this, exp.Array):
                 elem = seq_get(this.expressions, 0)
                 if not (elem and elem.find(exp.Query)):

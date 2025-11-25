@@ -19,6 +19,9 @@ def _annotate_by_similar_args(
     Infers the type of the expression according to the following rules:
     - If all args are of the same type OR any arg is of target_type, the expr is inferred as such
     - If any arg is of UNKNOWN type and none of target_type, the expr is inferred as UNKNOWN
+    以下の規則に従って式の型を推論します。
+    - すべての引数が同じ型であるか、いずれかの引数がtarget_typeである場合、式はその型として推論されます。
+    - いずれかの引数がUNKNOWN型であり、かついずれの引数もtarget_typeでない場合、式はUNKNOWN型として推論されます。
     """
     self._annotate_args(expression)
 

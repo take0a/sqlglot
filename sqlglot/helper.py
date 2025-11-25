@@ -63,7 +63,8 @@ def suggest_closest_match_and_fail(
 
 
 def seq_get(seq: t.Sequence[T], index: int) -> t.Optional[T]:
-    """Returns the value in `seq` at position `index`, or `None` if `index` is out of bounds."""
+    """Returns the value in `seq` at position `index`, or `None` if `index` is out of bounds.
+    位置 `index` の `seq` の値を返します。`index` が範囲外の場合は `None` を返します。"""
     try:
         return seq[index]
     except IndexError:
@@ -85,12 +86,15 @@ def ensure_list(value: T) -> t.List[T]: ...
 def ensure_list(value):
     """
     Ensures that a value is a list, otherwise casts or wraps it into one.
+    値がリストであることを確認します。そうでない場合は、値をリストにキャストまたはラップします。
 
     Args:
         value: The value of interest.
+            関心のある値
 
     Returns:
         The value cast as a list if it's a list or a tuple, or else the value wrapped in a list.
+        リストまたはタプルの場合はリストとしてキャストされた値、それ以外の場合はリストにラップされた値。
     """
     if value is None:
         return []
@@ -111,12 +115,15 @@ def ensure_collection(value: T) -> t.Collection[T]: ...
 def ensure_collection(value):
     """
     Ensures that a value is a collection (excluding `str` and `bytes`), otherwise wraps it into a list.
+    値がコレクションであることを確認します (`str` と `bytes` を除く)。それ以外の場合は、値をリストにラップします。
 
     Args:
         value: The value of interest.
+            関心のある値
 
     Returns:
         The value if it's a collection, or else the value wrapped in a list.
+        コレクションの場合は値、そうでない場合はリストにラップされた値。
     """
     if value is None:
         return []
@@ -128,13 +135,17 @@ def ensure_collection(value):
 def csv(*args: str, sep: str = ", ") -> str:
     """
     Formats any number of string arguments as CSV.
+    任意の数の文字列引数を CSV としてフォーマットします。
 
     Args:
         args: The string arguments to format.
+            フォーマットする文字列引数。
         sep: The argument separator.
+            引数の区切り文字。
 
     Returns:
         The arguments formatted as a CSV string.
+        CSV 文字列としてフォーマットされた引数。
     """
     return sep.join(arg for arg in args if arg)
 
@@ -146,14 +157,19 @@ def subclasses(
 ) -> t.List[t.Type]:
     """
     Returns all subclasses for a collection of classes, possibly excluding some of them.
+    クラスのコレクションのすべてのサブクラスを返します (一部が除外される場合もあります)。
 
     Args:
         module_name: The name of the module to search for subclasses in.
+            サブクラスを検索するモジュールの名前。
         classes: Class(es) we want to find the subclasses of.
+            サブクラスを検索するクラス。
         exclude: Classes we want to exclude from the returned list.
+            返されるリストから除外するクラス。
 
     Returns:
         The target subclasses.
+        ターゲットのサブクラス。
     """
     return [
         obj
@@ -172,16 +188,23 @@ def apply_index_offset(
 ) -> t.List[E]:
     """
     Applies an offset to a given integer literal expression.
+    指定された整数リテラル式にオフセットを適用します。
 
     Args:
         this: The target of the index.
+            インデックスのターゲット。
         expressions: The expression the offset will be applied to, wrapped in a list.
+            オフセットが適用される式。リストにラップされます。
         offset: The offset that will be applied.
+            適用されるオフセット。
         dialect: the dialect of interest.
+            対象の方言。
 
     Returns:
         The original expression with the offset applied to it, wrapped in a list. If the provided
         `expressions` argument contains more than one expression, it's returned unaffected.
+        オフセットが適用された元の式がリストにラップされます。
+        指定された `expressions` 引数に複数の式が含まれている場合、そのまま返されます。
     """
     if not offset or len(expressions) != 1:
         return expressions
@@ -213,20 +236,25 @@ def apply_index_offset(
 
 
 def camel_to_snake_case(name: str) -> str:
-    """Converts `name` from camelCase to snake_case and returns the result."""
+    """Converts `name` from camelCase to snake_case and returns the result.
+    `name` を camelCase から snake_case に変換し、結果を返します。"""
     return CAMEL_CASE_PATTERN.sub("_", name).upper()
 
 
 def while_changing(expression: Expression, func: t.Callable[[Expression], E]) -> E:
     """
     Applies a transformation to a given expression until a fix point is reached.
+    固定点に達するまで、指定された式に変換を適用します。
 
     Args:
         expression: The expression to be transformed.
+            変換する式。
         func: The transformation to be applied.
+            適用する変換。
 
     Returns:
         The transformed expression.
+        変形された式。
     """
 
     while True:
@@ -243,12 +271,15 @@ def while_changing(expression: Expression, func: t.Callable[[Expression], E]) ->
 def tsort(dag: t.Dict[T, t.Set[T]]) -> t.List[T]:
     """
     Sorts a given directed acyclic graph in topological order.
+    指定された有向非巡回グラフを位相順序でソートします。
 
     Args:
         dag: The graph to be sorted.
+            ソートするグラフ。
 
     Returns:
         A list that contains all of the graph's nodes in topological order.
+        グラフのすべてのノードをトポロジカルな順序で含むリスト。
     """
     result = []
 
@@ -277,13 +308,17 @@ def tsort(dag: t.Dict[T, t.Set[T]]) -> t.List[T]:
 def find_new_name(taken: t.Collection[str], base: str) -> str:
     """
     Searches for a new name.
+    新しい名前を検索します。
 
     Args:
         taken: A collection of taken names.
+            使用されている名前のコレクション。
         base: Base name to alter.
+            変更するベース名。
 
     Returns:
         The new, available name.
+        新しい、使用可能な名前。
     """
     if base not in taken:
         return base
@@ -314,13 +349,15 @@ def is_type(text: str, target_type: t.Type) -> bool:
 
 
 def name_sequence(prefix: str) -> t.Callable[[], str]:
-    """Returns a name generator given a prefix (e.g. a0, a1, a2, ... if the prefix is "a")."""
+    """Returns a name generator given a prefix (e.g. a0, a1, a2, ... if the prefix is "a").
+    プレフィックスが指定された名前ジェネレーターを返します (例: プレフィックスが "a" の場合は a0、a1、a2、...)。"""
     sequence = count()
     return lambda: f"{prefix}{next(sequence)}"
 
 
 def object_to_dict(obj: t.Any, **kwargs) -> t.Dict:
-    """Returns a dictionary created from an object's attributes."""
+    """Returns a dictionary created from an object's attributes.
+    オブジェクトの属性から作成された辞書を返します。"""
     return {
         **{k: v.copy() if hasattr(v, "copy") else copy(v) for k, v in vars(obj).items()},
         **kwargs,
@@ -332,12 +369,17 @@ def split_num_words(
 ) -> t.List[t.Optional[str]]:
     """
     Perform a split on a value and return N words as a result with `None` used for words that don't exist.
+    値を分割し、結果として N 個の単語を返します。存在しない単語には `None` が使用されます。
 
     Args:
         value: The value to be split.
+            分割する値。
         sep: The value to use to split on.
+            分割に使用する値。
         min_num_words: The minimum number of words that are going to be in the result.
+            結果に含まれる単語の最小数。
         fill_from_start: Indicates that if `None` values should be inserted at the start or end of the list.
+            `None` の場合、リストの先頭または末尾に値を挿入する必要があることを示します。
 
     Examples:
         >>> split_num_words("db.table", ".", 3)
@@ -349,6 +391,7 @@ def split_num_words(
 
     Returns:
         The list of words returned by `split`, possibly augmented by a number of `None` values.
+        `split` によって返される単語のリスト。`None` 値がいくつか追加される可能性があります。
     """
     words = value.split(sep)
     if fill_from_start:
@@ -359,6 +402,7 @@ def split_num_words(
 def is_iterable(value: t.Any) -> bool:
     """
     Checks if the value is an iterable, excluding the types `str` and `bytes`.
+    `str` および `bytes` 型を除いて、値が反復可能かどうかを確認します。
 
     Examples:
         >>> is_iterable([1,2])
@@ -368,9 +412,11 @@ def is_iterable(value: t.Any) -> bool:
 
     Args:
         value: The value to check if it is an iterable.
+            反復可能かどうかを確認する値。
 
     Returns:
         A `bool` value indicating if it is an iterable.
+        反復可能かどうかを示す `bool` 値。
     """
     from sqlglot import Expression
 
@@ -381,6 +427,8 @@ def flatten(values: t.Iterable[t.Iterable[t.Any] | t.Any]) -> t.Iterator[t.Any]:
     """
     Flattens an iterable that can contain both iterable and non-iterable elements. Objects of
     type `str` and `bytes` are not regarded as iterables.
+    反復可能な要素と反復不可能な要素の両方を含む反復可能オブジェクトをフラット化します。
+    `str` 型および `bytes` 型のオブジェクトは反復可能オブジェクトとはみなされません。
 
     Examples:
         >>> list(flatten([[1, 2], 3, {4}, (5, "bla")]))
@@ -390,9 +438,11 @@ def flatten(values: t.Iterable[t.Iterable[t.Any] | t.Any]) -> t.Iterator[t.Any]:
 
     Args:
         values: The value to be flattened.
+            平坦化される値。
 
     Yields:
         Non-iterable elements in `values`.
+        `values` 内の反復不可能な要素。
     """
     for value in values:
         if is_iterable(value):
@@ -404,6 +454,7 @@ def flatten(values: t.Iterable[t.Iterable[t.Any] | t.Any]) -> t.Iterator[t.Any]:
 def dict_depth(d: t.Dict) -> int:
     """
     Get the nesting depth of a dictionary.
+    辞書のネストの深さを取得します。
 
     Example:
         >>> dict_depth(None)
@@ -428,7 +479,8 @@ def dict_depth(d: t.Dict) -> int:
 
 
 def first(it: t.Iterable[T]) -> T:
-    """Returns the first element from an iterable (useful for sets)."""
+    """Returns the first element from an iterable (useful for sets).
+    反復可能オブジェクトから最初の要素を返します (セットに便利です)。"""
     return next(i for i in it)
 
 
@@ -450,6 +502,8 @@ def merge_ranges(ranges: t.List[t.Tuple[A, A]]) -> t.List[t.Tuple[A, A]]:
     """
     Merges a sequence of ranges, represented as tuples (low, high) whose values
     belong to some totally-ordered set.
+    完全に順序付けられたセットに属する値を持つタプル (low、high) として表される
+    範囲のシーケンスを結合します。
 
     Example:
         >>> merge_ranges([(1, 3), (2, 6)])
@@ -504,9 +558,12 @@ V = t.TypeVar("V")
 class SingleValuedMapping(t.Mapping[K, V]):
     """
     Mapping where all keys return the same value.
+    すべてのキーが同じ値を返すマッピング。
 
     This rigamarole is meant to avoid copying keys, which was originally intended
     as an optimization while qualifying columns for tables with lots of columns.
+    この面倒な処理は、キーのコピーを回避するためのもので、元々は多数の列を持つテーブルで
+    列を修飾する際の最適化を目的としていました。
     """
 
     def __init__(self, keys: t.Collection[K], value: V):

@@ -23,6 +23,8 @@ def qualify_tables(
     """
     Rewrite sqlglot AST to have fully qualified tables. Join constructs such as
     (t1 JOIN t2) AS t will be expanded into (SELECT * FROM t1 AS t1, t2 AS t2) AS t.
+    sqlglot AST を完全修飾テーブルに書き換えます。(t1 JOIN t2) AS t のような結合構文は、
+    (SELECT * FROM t1 AS t1, t2 AS t2) AS t に展開されます。
 
     Examples:
         >>> import sqlglot
@@ -39,10 +41,13 @@ def qualify_tables(
         db: Database name
         catalog: Catalog name
         on_qualify: Callback after a table has been qualified.
+            テーブルが修飾された後のコールバック。
         dialect: The dialect to parse catalog and schema into.
+            カタログとスキーマを解析する方言。
 
     Returns:
         The qualified expression.
+        修飾された式。
     """
     dialect = Dialect.get_or_raise(dialect)
 
@@ -101,10 +106,12 @@ def qualify_tables(
                 pivots = source.args.get("pivots")
                 if not source.alias:
                     # Don't add the pivot's alias to the pivoted table, use the table's name instead
+                    # ピボットテーブルにピボットのエイリアスを追加せず、代わりにテーブルの名前を使用します。
                     if pivots and pivots[0].alias == name:
                         name = source.name
 
                     # Mutates the source by attaching an alias to it
+                    # エイリアスを付けてソースを変更する
                     normalized_alias = normalize_identifiers(
                         name or source.name or alias_sequence(), dialect=dialect
                     )
@@ -124,6 +131,7 @@ def qualify_tables(
                         pivot.set("alias", exp.TableAlias(this=exp.to_identifier(pivot_alias)))
 
                     # This case corresponds to a pivoted CTE, we don't want to qualify that
+                    # このケースはピボットCTEに相当しますが、
                     if isinstance(scope.sources.get(source.alias_or_name), Scope):
                         continue
 
@@ -154,6 +162,7 @@ def qualify_tables(
                         and isinstance(node.parent, (exp.From, exp.Join))
                     ):
                         # Mutates the table by attaching an alias to it
+                        # エイリアスを付けてテーブルを変更します
                         alias(node, node.name, copy=False, table=True)
 
         for column in scope.columns:

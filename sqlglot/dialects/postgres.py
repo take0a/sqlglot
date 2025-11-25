@@ -166,6 +166,8 @@ def _serial_to_generated(expression: exp.Expression) -> exp.Expression:
 def _build_generate_series(args: t.List) -> exp.ExplodingGenerateSeries:
     # The goal is to convert step values like '1 day' or INTERVAL '1 day' into INTERVAL '1' day
     # Note: postgres allows calls with just two arguments -- the "step" argument defaults to 1
+    # 目標は、「1日」やINTERVAL「1日」のようなステップ値をINTERVAL「1」日に変換することです。
+    # 注: postgresでは2つの引数のみで呼び出しが可能です。「step」引数のデフォルトは1です。
     step = seq_get(args, 2)
     if step is not None:
         if step.is_string:
@@ -178,6 +180,7 @@ def _build_generate_series(args: t.List) -> exp.ExplodingGenerateSeries:
 
 def _build_to_timestamp(args: t.List) -> exp.UnixToTime | exp.StrToTime:
     # TO_TIMESTAMP accepts either a single double argument or (text, text)
+    # TO_TIMESTAMPは、単一のdouble引数または(text, text)のいずれかを受け入れます。
     if len(args) == 1:
         # https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-TABLE
         return exp.UnixToTime.from_arg_list(args)
@@ -199,11 +202,15 @@ def _json_extract_sql(
 
 def _build_regexp_replace(args: t.List, dialect: DialectType = None) -> exp.RegexpReplace:
     # The signature of REGEXP_REPLACE is:
+    # REGEXP_REPLACE のシグネチャは次のとおりです。
     # regexp_replace(source, pattern, replacement [, start [, N ]] [, flags ])
     #
     # Any one of `start`, `N` and `flags` can be column references, meaning that
     # unless we can statically see that the last argument is a non-integer string
     # (eg. not '0'), then it's not possible to construct the correct AST
+    # `start`、`N`、`flags` のいずれかが列参照になる可能性があるので、最後の引数が
+    # 整数以外の文字列（例えば '0' ではない）であることを静的に確認できない限り、
+    # 正しい AST を構築することはできません。
     regexp_replace = None
     if len(args) > 3:
         last = args[-1]
@@ -239,6 +246,8 @@ def _unix_to_time_sql(self: Postgres.Generator, expression: exp.UnixToTime) -> s
 def _build_levenshtein_less_equal(args: t.List) -> exp.Levenshtein:
     # Postgres has two signatures for levenshtein_less_equal function, but in both cases
     # max_dist is the last argument
+    # Postgresにはlevenshtein_less_equal関数の2つのシグネチャがありますが、
+    # どちらの場合もmax_distが最後の引数になります。
     # levenshtein_less_equal(source, target, ins_cost, del_cost, sub_cost, max_d)
     # levenshtein_less_equal(source, target, max_d)
     max_dist = args.pop()
@@ -808,6 +817,7 @@ class Postgres(Dialect):
                 and expression.expressions
             ):
                 # Postgres doesn't support precision for REAL and DOUBLE PRECISION types
+                # PostgresはREAL型とDOUBLE PRECISION型の精度をサポートしていません
                 return f"FLOAT({self.expressions(expression, flat=True)})"
 
             return super().datatype_sql(expression)
@@ -816,6 +826,7 @@ class Postgres(Dialect):
             this = expression.this
 
             # Postgres casts DIV() to decimal for transpilation but when roundtripping it's superfluous
+            # PostgresはDIV()を10進数に変換しますが、ラウンドトリップでは不要です。
             if isinstance(this, exp.IntDiv) and expression.to == exp.DataType.build("decimal"):
                 return self.sql(this)
 
@@ -858,6 +869,7 @@ class Postgres(Dialect):
 
         def arraycontains_sql(self, expression: exp.ArrayContains) -> str:
             # Convert DuckDB's LIST_CONTAINS(array, value) to PostgreSQL
+            # DuckDBのLIST_CONTAINS(配列、値)をPostgreSQLに変換する
             # DuckDB behavior:
             #   - LIST_CONTAINS([1,2,3], 2) -> true
             #   - LIST_CONTAINS([1,2,3], 4) -> false

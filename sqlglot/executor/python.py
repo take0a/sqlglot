@@ -62,7 +62,8 @@ class PythonExecutor:
         return contexts[root].tables[root.name]
 
     def generate(self, expression):
-        """Convert a SQL expression into literal Python code and compile it into bytecode."""
+        """Convert a SQL expression into literal Python code and compile it into bytecode.
+        SQL 式をリテラル Python コードに変換し、バイトコードにコンパイルします。"""
         if not expression:
             return None
 
@@ -70,7 +71,8 @@ class PythonExecutor:
         return compile(sql, sql, "eval", optimize=2)
 
     def generate_tuple(self, expressions):
-        """Convert an array of SQL expressions into tuple of Python byte code."""
+        """Convert an array of SQL expressions into tuple of Python byte code.
+        SQL 式の配列を Python バイトコードのタプルに変換します。"""
         if not expressions:
             return tuple()
         return tuple(self.generate(expression) for expression in expressions)

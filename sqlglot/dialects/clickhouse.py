@@ -124,21 +124,29 @@ def _timestrtotime_sql(self: ClickHouse.Generator, expression: exp.TimeStrToTime
     if tz and isinstance(ts, exp.Literal):
         # Clickhouse will not accept timestamps that include a UTC offset, so we must remove them.
         # The first step to removing is parsing the string with `datetime.datetime.fromisoformat`.
+        # Clickhouse は UTC オフセットを含むタイムスタンプを受け付けないため、これらを削除する必要があります。
+        # 削除するための最初のステップは、`datetime.datetime.fromisoformat` を使って文字列を解析することです。
         #
         # In python <3.11, `fromisoformat()` can only parse timestamps of millisecond (3 digit)
         # or microsecond (6 digit) precision. It will error if passed any other number of fractional
         # digits, so we extract the fractional seconds and pad to 6 digits before parsing.
+        # Python 3.11 未満では、`fromisoformat()` はミリ秒（3桁）またはマイクロ秒（6桁）の精度の
+        # タイムスタンプのみを解析できます。それ以外の小数点以下の桁数を指定するとエラーが発生するため、
+        # 解析前に小数点以下の秒数を抽出し、6桁にパディングします。
         ts_string = ts.name.strip()
 
         # separate [date and time] from [fractional seconds and UTC offset]
+        # [日付と時刻]と[秒の小数点とUTCオフセット]を分離する
         ts_parts = ts_string.split(".")
         if len(ts_parts) == 2:
             # separate fractional seconds and UTC offset
+            # 秒の小数部とUTCオフセットを分離する
             offset_sep = "+" if "+" in ts_parts[1] else "-"
             ts_frac_parts = ts_parts[1].split(offset_sep)
             num_frac_parts = len(ts_frac_parts)
 
             # pad to 6 digits if fractional seconds present
+            # 小数秒がある場合は6桁に埋める
             ts_frac_parts[0] = ts_frac_parts[0].ljust(6, "0")
             ts_string = "".join(
                 [
@@ -153,12 +161,16 @@ def _timestrtotime_sql(self: ClickHouse.Generator, expression: exp.TimeStrToTime
         # return literal with no timezone, eg turn '2020-01-01 12:13:14-08:00' into '2020-01-01 12:13:14'
         # this is because Clickhouse encodes the timezone as a data type parameter and throws an error if
         # it's part of the timestamp string
+        # タイムゾーンのないリテラルを返します。例: '2020-01-01 12:13:14-08:00' を 
+        # '2020-01-01 12:13:14' に変換します。これは、Clickhouse がタイムゾーンをデータ型パラメータとして
+        # エンコードし、タイムスタンプ文字列の一部である場合にエラーをスローするためです。
         ts_without_tz = (
             datetime.datetime.fromisoformat(ts_string).replace(tzinfo=None).isoformat(sep=" ")
         )
         ts = exp.Literal.string(ts_without_tz)
 
     # Non-nullable DateTime64 with microsecond precision
+    # マイクロ秒精度の非NULL DateTime64
     expressions = [exp.DataTypeParam(this=tz)] if tz else []
     datatype = exp.DataType.build(
         exp.DataType.Type.DATETIME64,
@@ -213,6 +225,8 @@ def _build_split(exp_class: t.Type[E]) -> t.Callable[[t.List], E]:
 
 # Skip the 'week' unit since ClickHouse's toStartOfWeek
 # uses an extra mode argument to specify the first day of the week
+# ClickHouseのtoStartOfWeekは週の最初の日を指定するために
+# 追加のモード引数を使用するため、「週」単位をスキップします。
 TIMESTAMP_TRUNC_UNITS = {
     "MICROSECOND",
     "MILLISECOND",
@@ -256,8 +270,10 @@ class ClickHouse(Dialect):
 
     def generate_values_aliases(self, expression: exp.Values) -> t.List[exp.Identifier]:
         # Clickhouse allows VALUES to have an embedded structure e.g:
+        # Clickhouseでは、VALUESに埋め込み構造を持たせることができます。例:
         # VALUES('person String, place String', ('Noah', 'Paris'), ...)
         # In this case, we don't want to qualify the columns
+        # この場合、列を修飾する必要はありません。
         values = expression.expressions[0].expressions
 
         structure = (
@@ -267,6 +283,7 @@ class ClickHouse(Dialect):
         )
         if structure:
             # Split each column definition into the column name e.g:
+            # 各列定義を列名に分割します。例:
             # 'person String, place String' -> ['person', 'place']
             structure_coldefs = [coldef.strip() for coldef in structure.name.split(",")]
             column_aliases = [
@@ -274,6 +291,7 @@ class ClickHouse(Dialect):
             ]
         else:
             # Default column aliases in CH are "c1", "c2", etc.
+            # CH のデフォルトの列エイリアスは「c1」、「c2」などです。
             column_aliases = [
                 exp.to_identifier(f"c{i + 1}") for i in range(len(values[0].expressions))
             ]
@@ -337,6 +355,7 @@ class ClickHouse(Dialect):
 
     class Parser(parser.Parser):
         # Tested in ClickHouse's playground, it seems that the following two queries do the same thing
+        # ClickHouseのプレイグラウンドでテストしたところ、次の2つのクエリは同じことを行うようです。
         # * select x from t1 union all select x from t2 limit 1;
         # * select x from t1 union all (select x from t2 limit 1);
         MODIFIERS_ATTACHED_TO_SET_OP = False
@@ -584,6 +603,8 @@ class ClickHouse(Dialect):
 
         # The PLACEHOLDER entry is popped because 1) it doesn't affect Clickhouse (it corresponds to
         # the postgres-specific JSONBContains parser) and 2) it makes parsing the ternary op simpler.
+        # PLACEHOLDER エントリがポップされるのは、1) Clickhouse に影響を与えないため (postgres 固有の 
+        # JSONBContains パーサーに対応)、2) 三項演算子の解析が簡単になるためです。
         COLUMN_OPERATORS = parser.Parser.COLUMN_OPERATORS.copy()
         COLUMN_OPERATORS.pop(TokenType.PLACEHOLDER)
 
@@ -661,6 +682,11 @@ class ClickHouse(Dialect):
                 # dialects to ClickHouse, so that we can e.g. produce `CAST(x AS Nullable(String))`
                 # from `CAST(x AS TEXT)`. If there is a `NULL` value in `x`, the former would
                 # fail in ClickHouse without the `Nullable` type constructor.
+                # ClickHouseのデフォルトである非null型としてすべての型をマークします（ただし、
+                # 既にnull可能としてマークされている場合は除きます）。このマークは、他の方言から
+                # ClickHouseへの型変換に役立ちます。例えば、`CAST(x AS TEXT)`から
+                # `CAST(x AS Nullable(String))`を生成できます。`x`に`NULL`値がある場合、
+                # 前者はClickHouseでは`Nullable`型コンストラクタなしでは失敗します。
                 dtype.set("nullable", False)
 
             return dtype
@@ -675,8 +701,12 @@ class ClickHouse(Dialect):
             # We return Anonymous here because extract and regexpExtract have different semantics,
             # so parsing extract(foo, bar) into RegexpExtract can potentially break queries. E.g.,
             # `extract('foobar', 'b')` works, but ClickHouse crashes for `regexpExtract('foobar', 'b')`.
+            # ここでAnonymousを返すのは、extractとregexpExtractは意味が異なるため、extract(foo, bar)を
+            # RegexpExtractにパースするとクエリが壊れる可能性があるためです。例えば、`extract('foobar', 'b')`
+            # は動作しますが、`regexpExtract('foobar', 'b')`ではClickHouseがクラッシュします。
             #
             # TODO: can we somehow convert the former into an equivalent `regexpExtract` call?
+            # TODO: 前者を同等の`regexpExtract`呼び出しに変換できますか？
             self._match(TokenType.COMMA)
             return self.expression(
                 exp.Anonymous, this="extract", expressions=[this, self._parse_bitwise()]
@@ -698,6 +728,7 @@ class ClickHouse(Dialect):
         def _parse_query_parameter(self) -> t.Optional[exp.Expression]:
             """
             Parse a placeholder expression like SELECT {abc: UInt32} or FROM {table: Identifier}
+            SELECT {abc: UInt32} や FROM {table: Identifier} のようなプレースホルダー式を解析します。
             https://clickhouse.com/docs/en/sql-reference/syntax#defining-and-using-query-parameters
             """
             index = self._index
@@ -824,6 +855,7 @@ class ClickHouse(Dialect):
                 join.set("global_", method)
 
                 # tbl ARRAY JOIN arr <-- this should be a `Column` reference, not a `Table`
+                # tbl ARRAY JOIN arr <-- これは `Table` ではなく `Column` 参照である必要があります
                 # https://clickhouse.com/docs/en/sql-reference/statements/select/array-join
                 if join.kind == "ARRAY":
                     for table in join.find_all(exp.Table):
@@ -954,6 +986,7 @@ class ClickHouse(Dialect):
 
             if self._match_text_seq("ID"):
                 # Corresponds to the PARTITION ID <string_value> syntax
+                # PARTITION ID <string_value>構文に対応します
                 expressions: t.List[exp.Expression] = [
                     self.expression(exp.PartitionId, this=self._parse_string())
                 ]
@@ -990,6 +1023,9 @@ class ClickHouse(Dialect):
         ) -> t.Optional[exp.Expression]:
             # In clickhouse "SELECT <expr> APPLY(...)" is a query modifier,
             # so "APPLY" shouldn't be parsed as <expr>'s alias. However, "SELECT <expr> apply" is a valid alias
+            # Clickhouseでは「SELECT <expr> APPLY(...)」はクエリ修飾子なので、
+            # 「APPLY」は<expr>のエイリアスとして解析されるべきではありません。
+            # ただし、「SELECT <expr> apply」は有効なエイリアスです。
             if self._match_pair(TokenType.APPLY, TokenType.L_PAREN, advance=False):
                 return this
 
@@ -999,6 +1035,7 @@ class ClickHouse(Dialect):
             this = super()._parse_expression()
 
             # Clickhouse allows "SELECT <expr> [APPLY(func)] [...]]" modifier
+            # Clickhouseでは「SELECT <expr> [APPLY(func)] [...]]」という修飾子が使用できます。
             while self._match_pair(TokenType.APPLY, TokenType.L_PAREN):
                 this = exp.Apply(this=this, expression=self._parse_var(any_token=True))
                 self._match(TokenType.R_PAREN)
@@ -1023,6 +1060,10 @@ class ClickHouse(Dialect):
             # In INSERT INTO statements the same clause actually references multiple columns (opposite semantics),
             # but the final result is not altered by the extra parentheses.
             # Note: Clickhouse allows VALUES([structure], value, ...) so the branch checks for the last expression
+            # Clickhouseでは、「SELECT * FROM VALUES (1, 2, 3)」は他の方言とは異なり、1列のテーブルを生成します。
+            # この場合、値がタプルのタプル型ASTでない場合は、正規化します。INSERT INTO文では、同じ句が実際には
+            # 複数の列を参照しますが（セマンティクスが逆になります）、追加の括弧によって最終結果は変更されません。
+            # 注：ClickhouseではVALUES([structure], value, ...)が許可されているため、分岐は最後の式をチェックします。
             expressions = value.expressions
             if values and not isinstance(expressions[-1], exp.Tuple):
                 value.set(
@@ -1034,6 +1075,7 @@ class ClickHouse(Dialect):
 
         def _parse_partitioned_by(self) -> exp.PartitionedByProperty:
             # ClickHouse allows custom expressions as partition key
+            # ClickHouseではパーティションキーとしてカスタム式を使用できます
             # https://clickhouse.com/docs/engines/table-engines/mergetree-family/custom-partitioning-key
             return self.expression(
                 exp.PartitionedByProperty,
@@ -1235,6 +1277,8 @@ class ClickHouse(Dialect):
 
         # There's no list in docs, but it can be found in Clickhouse code
         # see `ClickHouse/src/Parsers/ParserCreate*.cpp`
+        # ドキュメントにはリストがありませんが、Clickhouseコードでは 
+        # `ClickHouse/src/Parsers/ParserCreate*.cpp` で見つかります。
         ON_CLUSTER_TARGETS = {
             "SCHEMA",  # Transpiled CREATE SCHEMA may have OnCluster property set
             "DATABASE",
@@ -1276,6 +1320,8 @@ class ClickHouse(Dialect):
             if not isinstance(expression.parent, exp.Cast):
                 # StrToDate returns DATEs in other dialects (eg. postgres), so
                 # this branch aims to improve the transpilation to clickhouse
+                # StrToDateは他の方言（例えばpostgres）のDATEを返すので、
+                # このブランチはclickhouseへのトランスパイルを改善することを目的としています。
                 return self.cast_sql(exp.cast(expression, "DATE"))
 
             return strtodate_sql
@@ -1292,6 +1338,7 @@ class ClickHouse(Dialect):
             dtype = expression.to
             if not dtype.is_type(*self.NON_NULLABLE_TYPES, check_nullable=True):
                 # Casting x into Nullable(T) appears to behave similarly to TRY_CAST(x AS T)
+                # xをNullable(T)にキャストすると、TRY_CAST(x AS T)と同様に動作するようです。
                 dtype.set("nullable", True)
 
             return super().cast_sql(expression)
@@ -1328,12 +1375,15 @@ class ClickHouse(Dialect):
 
         def regexpilike_sql(self, expression: exp.RegexpILike) -> str:
             # Manually add a flag to make the search case-insensitive
+            # 大文字と小文字を区別せずに検索するためのフラグを手動で追加します
             regex = self.func("CONCAT", "'(?i)'", expression.expression)
             return self.func("match", expression.this, regex)
 
         def datatype_sql(self, expression: exp.DataType) -> str:
             # String is the standard ClickHouse type, every other variant is just an alias.
             # Additionally, any supplied length parameter will be ignored.
+            # 文字列はClickHouseの標準型であり、その他の型は単なるエイリアスです。
+            # また、指定された長さパラメータは無視されます。
             #
             # https://clickhouse.com/docs/en/sql-reference/data-types/string
             if expression.this in self.STRING_TYPE_MAPPING:
@@ -1348,6 +1398,13 @@ class ClickHouse(Dialect):
             #   constraint: "Type of Map key must be a type, that can be represented by integer or
             #   String or FixedString (possibly LowCardinality) or UUID or IPv6"
             # - It's not a composite type, e.g. `Nullable(Array(...))` is not a valid type
+            # このセクションでは、以下の条件が満たされる場合、型を `Nullable(...)` に変更します。
+            # - nullable としてマークされているため、ClickHouse 型が `Nullable` でラップされて
+            #   セマンティクスが変更されることはありません。
+            # - これは `Map` のキー型ではありません。これは、ClickHouse が以下の制約を課しているためです。
+            #   「Map キーの型は、整数、文字列、固定文字列（LowCardinality も可）、UUID、または IPv6 で
+            #   表せる型である必要があります。」
+            # - これは複合型ではありません。例: `Nullable(Array(...))` は有効な型ではありません。
             parent = expression.parent
             nullable = expression.args.get("nullable")
             if nullable is True or (
@@ -1411,6 +1468,7 @@ class ClickHouse(Dialect):
 
         def create_sql(self, expression: exp.Create) -> str:
             # The comment property comes last in CTAS statements, i.e. after the query
+            # コメントプロパティはCTASステートメントの最後、つまりクエリの後に来ます。
             query = expression.expression
             if isinstance(query, exp.Query):
                 comment_prop = expression.find(exp.SchemaCommentProperty)
@@ -1478,6 +1536,7 @@ class ClickHouse(Dialect):
             if isinstance(expression.this, exp.In):
                 if expression.this.args.get("is_global"):
                     # let `GLOBAL IN` child interpose `NOT`
+                    # `GLOBAL IN` 子に `NOT` を挿入させる
                     return self.sql(expression, "this")
 
                 expression.set("this", exp.paren(expression.this, copy=False))
@@ -1487,6 +1546,8 @@ class ClickHouse(Dialect):
         def values_sql(self, expression: exp.Values, values_as_table: bool = True) -> str:
             # If the VALUES clause contains tuples of expressions, we need to treat it
             # as a table since Clickhouse will automatically alias it as such.
+            # VALUES 句に式のタプルが含まれている場合、Clickhouse によって自動的に
+            # エイリアスが付けられるため、テーブルとして扱う必要があります。
             alias = expression.args.get("alias")
 
             if alias and alias.args.get("columns") and expression.expressions:

@@ -15,6 +15,7 @@ if t.TYPE_CHECKING:
 def eliminate_subqueries(expression: exp.Expression) -> exp.Expression:
     """
     Rewrite derived tables as CTES, deduplicating if possible.
+    派生テーブルを CTES として書き換え、可能な場合は重複を排除します。
 
     Example:
         >>> import sqlglot
@@ -23,6 +24,7 @@ def eliminate_subqueries(expression: exp.Expression) -> exp.Expression:
         'WITH y AS (SELECT * FROM x) SELECT a FROM y AS y'
 
     This also deduplicates common subqueries:
+    これにより、共通のサブクエリも重複排除されます。
         >>> expression = sqlglot.parse_one("SELECT a FROM (SELECT * FROM x) AS y CROSS JOIN (SELECT * FROM x) AS z")
         >>> eliminate_subqueries(expression).sql()
         'WITH y AS (SELECT * FROM x) SELECT a FROM y AS y CROSS JOIN y AS z'
@@ -34,6 +36,7 @@ def eliminate_subqueries(expression: exp.Expression) -> exp.Expression:
     """
     if isinstance(expression, exp.Subquery):
         # It's possible to have subqueries at the root, e.g. (SELECT * FROM x) LIMIT 1
+        # ルートにサブクエリを置くことも可能です。例: (SELECT * FROM x) LIMIT 1
         eliminate_subqueries(expression.this)
         return expression
 
@@ -45,6 +48,8 @@ def eliminate_subqueries(expression: exp.Expression) -> exp.Expression:
     # Map of alias->Scope|Table
     # These are all aliases that are already used in the expression.
     # We don't want to create new CTEs that conflict with these names.
+    # これらはすべて、式で既に使用されているエイリアスです。
+    # これらの名前と競合する新しい CTE を作成したくありません。
     taken: TakenNameMapping = {}
 
     # All CTE aliases in the root scope are taken
@@ -63,6 +68,7 @@ def eliminate_subqueries(expression: exp.Expression) -> exp.Expression:
 
     # Map of Expression->alias
     # Existing CTES in the root expression. We'll use this for deduplication.
+    # ルート式に既存のCTESがあります。これを重複排除に使用します。
     existing_ctes: ExistingCTEsMapping = {}
 
     with_ = root.expression.args.get("with_")
@@ -75,20 +81,26 @@ def eliminate_subqueries(expression: exp.Expression) -> exp.Expression:
 
     # We're adding more CTEs, but we want to maintain the DAG order.
     # Derived tables within an existing CTE need to come before the existing CTE.
+    # CTE をさらに追加していますが、DAG の順序を維持したいと考えています。
+    # 既存の CTE 内の派生テーブルは、既存の CTE の前に配置する必要があります。
     for cte_scope in root.cte_scopes:
         # Append all the new CTEs from this existing CTE
+        # この既存のCTEからすべての新しいCTEを追加します
         for scope in cte_scope.traverse():
             if scope is cte_scope:
                 # Don't try to eliminate this CTE itself
+                # このCTE自体を排除しようとしないでください
                 continue
             new_cte = _eliminate(scope, existing_ctes, taken)
             if new_cte:
                 new_ctes.append(new_cte)
 
         # Append the existing CTE itself
+        # 既存のCTE自体を追加する
         new_ctes.append(cte_scope.expression.parent)
 
     # Now append the rest
+    # 残りを追加します
     for scope in itertools.chain(root.union_scopes, root.subquery_scopes, root.table_scopes):
         for child_scope in scope.traverse():
             new_cte = _eliminate(child_scope, existing_ctes, taken)
@@ -124,6 +136,7 @@ def _eliminate_derived_table(
         return None
 
     # Get rid of redundant exp.Subquery expressions, i.e. those that are just used as wrappers
+    # 冗長なexp.Subquery式、つまりラッパーとしてのみ使用される式を削除します。
     to_replace = scope.expression.parent.unwrap()
     name, cte = _new_cte(scope, existing_ctes, taken)
     table = exp.alias_(exp.table_(name), alias=to_replace.alias or name)
@@ -146,6 +159,7 @@ def _eliminate_cte(
         with_.pop()
 
     # Rename references to this CTE
+    # このCTEへの参照の名前を変更する
     for child_scope in scope.parent.traverse():
         for table, source in child_scope.selected_sources.values():
             if source is scope:
@@ -163,6 +177,8 @@ def _new_cte(
         tuple of (name, cte)
         where `name` is a new name for this CTE in the root scope and `cte` is a new CTE instance.
         If this CTE duplicates an existing CTE, `cte` will be None.
+        ここで、`name` はルートスコープにおけるこの CTE の新しい名前であり、`cte` は新しい CTE インスタンスです。
+        この CTE が既存の CTE と重複する場合、`cte` は None になります。
     """
     duplicate_cte_alias = existing_ctes.get(scope.expression)
     parent = scope.expression.parent

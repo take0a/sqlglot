@@ -11,19 +11,25 @@ if t.TYPE_CHECKING:
 class Context:
     """
     Execution context for sql expressions.
+    SQL 式の実行コンテキスト。
 
     Context is used to hold relevant data tables which can then be queried on with eval.
+    コンテキストは、eval でクエリ可能な関連データテーブルを保持するために使用されます。
 
     References to columns can either be scalar or vectors. When set_row is used, column references
     evaluate to scalars while set_range evaluates to vectors. This allows convenient and efficient
     evaluation of aggregation functions.
+    列への参照は、スカラーまたはベクターのいずれかです。set_row を使用する場合、列参照はスカラーとして評価され、
+    set_range はベクターとして評価されます。これにより、集計関数を便利かつ効率的に評価できます。
     """
 
     def __init__(self, tables: t.Dict[str, Table], env: t.Optional[t.Dict] = None) -> None:
         """
         Args
             tables: representing the scope of the current execution context.
+                現在の実行コンテキストのスコープを表します。
             env: dictionary of functions within the execution context.
+                実行コンテキスト内の関数の辞書。
         """
         self.tables = tables
         self._table: t.Optional[Table] = None

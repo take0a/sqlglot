@@ -106,6 +106,8 @@ def _date_diff_sql(self: Hive.Generator, expression: exp.DateDiff | exp.TsOrDsDi
     if months_between or multiplier_sql:
         # MONTHS_BETWEEN returns a float, so we need to truncate the fractional part.
         # For the same reason, we want to truncate if there's a divisor present.
+        # MONTHS_BETWEEN は float を返すため、小数部を切り捨てる必要があります。
+        # 同じ理由で、除数が存在する場合も切り捨てます。
         diff_sql = f"CAST({diff_sql}{multiplier_sql} AS INT)"
 
     return diff_sql
@@ -118,6 +120,8 @@ def _json_format_sql(self: Hive.Generator, expression: exp.JSONFormat) -> str:
         if this.this.is_string:
             # Since FROM_JSON requires a nested type, we always wrap the json string with
             # an array to ensure that "naked" strings like "'a'" will be handled correctly
+            # FROM_JSONはネストされた型を必要とするため、常にjson文字列を配列で囲み、
+            # 「'a'」のような「裸の」文字列が正しく処理されるようにします。
             wrapped_json = exp.Literal.string(f"[{this.this.name}]")
 
             from_json = self.func(
@@ -126,6 +130,7 @@ def _json_format_sql(self: Hive.Generator, expression: exp.JSONFormat) -> str:
             to_json = self.func("TO_JSON", from_json)
 
             # This strips the [, ] delimiters of the dummy array printed by TO_JSON
+            # これはTO_JSONによって印刷されたダミー配列の[,]区切り文字を削除します。
             return self.func("REGEXP_EXTRACT", to_json, "'^.(.*).$'", "1")
         return self.sql(this)
 
@@ -220,6 +225,7 @@ class Hive(Dialect):
     EXPRESSION_METADATA = EXPRESSION_METADATA.copy()
 
     # Support only the non-ANSI mode (default for Hive, Spark2, Spark)
+    # 非 ANSI モードのみをサポートします (Hive、Spark2、Spark のデフォルト)
     COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))
     for target_type in {
         *exp.DataType.NUMERIC_TYPES,
@@ -310,6 +316,7 @@ class Hive(Dialect):
 
         CHANGE_COLUMN_ALTER_SYNTAX = False
         # Whether the dialect supports using ALTER COLUMN syntax with CHANGE COLUMN.
+        # 方言が CHANGE COLUMN を使用した ALTER COLUMN 構文の使用をサポートしているかどうか。
 
         FUNCTIONS = {
             **parser.Parser.FUNCTIONS,
@@ -425,6 +432,8 @@ class Hive(Dialect):
             """
             Spark (and most likely Hive) treats casts to CHAR(length) and VARCHAR(length) as casts to
             STRING in all contexts except for schema definitions. For example, this is in Spark v3.4.0:
+            Spark（そしておそらくHiveも）は、スキーマ定義を除くすべてのコンテキストにおいて、CHAR(length)および
+            VARCHAR(length)へのキャストをSTRINGへのキャストとして扱います。例えば、Spark v3.4.0では次のようになります。
 
                 spark-sql (default)> select cast(1234 as varchar(2));
                 23/06/06 15:51:18 WARN CharVarcharUtils: The Spark cast operator does not support
@@ -437,6 +446,8 @@ class Hive(Dialect):
 
             This shows that Spark doesn't truncate the value into '12', which is inconsistent with
             what other dialects (e.g. postgres) do, so we need to drop the length to transpile correctly.
+            これは、Spark が値を '12' に切り捨てないことを示しています。これは他の方言 (postgres など) の
+            動作と一致していないため、正しくトランスパイルするには長さを削減する必要があります。
 
             Reference: https://spark.apache.org/docs/latest/sql-ref-datatypes.html
             """

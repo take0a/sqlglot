@@ -1168,10 +1168,9 @@ class Parser(metaclass=_Parser):
     def _parse_partitioned_by_bucket_or_truncate(self) -> t.Optional[exp.Expression]:
         if not self._match(TokenType.L_PAREN, advance=False):
             # Partitioning by bucket or truncate follows the syntax:
-            # PARTITION BY (BUCKET(..) | TRUNCATE(..))
-            # If we don't have parenthesis after each keyword, we should instead parse this as an identifier
             # バケットまたは切り捨てによるパーティション分割は、次の構文に従います。
             # PARTITION BY (BUCKET(..) | TRUNCATE(..))
+            # If we don't have parenthesis after each keyword, we should instead parse this as an identifier
             # 各キーワードの後に​​括弧がない場合は、識別子として解析する必要があります。
             self._retreat(self._index - 1)
             return None
@@ -1190,6 +1189,10 @@ class Parser(metaclass=_Parser):
             #  - For Hive, it's `bucket(<num buckets>, <col name>)` or `truncate(<num_chars>, <col_name>)`
             #  - For Trino, it's reversed - `bucket(<col name>, <num buckets>)` or `truncate(<col_name>, <num_chars>)`
             # Both variants are canonicalized in the latter i.e `bucket(<col name>, <num buckets>)`
+            # Icebergパーティション変換（bucket / truncate）を確認し、引数の順序が正しいことを確認してください。
+            # - Hiveの場合、`bucket(<num buckets>, <col name>)`または`truncate(<num_chars>, <col_name>)`です。
+            # - Trinoの場合、逆順で`bucket(<col name>, <num buckets>)`または`truncate(<col_name>, <num_chars>)`です。
+            # どちらの形式も、後者（`bucket(<col name>, <num buckets>)`）で正規化されます。
             #
             # Hive ref: https://docs.aws.amazon.com/athena/latest/ug/querying-iceberg-creating-tables.html#querying-iceberg-partitioning
             # Trino ref: https://docs.aws.amazon.com/athena/latest/ug/create-table-as.html#ctas-table-properties
@@ -1606,6 +1609,8 @@ class Parser(metaclass=_Parser):
 
     # Whether INTERVAL spans with literal format '\d+ hh:[mm:[ss[.ff]]]'
     # can omit the span unit `DAY TO MINUTE` or `DAY TO SECOND`
+    # リテラル形式 '\d+ hh:[mm:[ss[.ff]]]' の INTERVAL スパンで、スパン単位 
+    # `DAY TO MINUTE` または `DAY TO SECOND` を省略できるかどうか
     SUPPORTS_OMITTED_INTERVAL_SPAN_UNIT = False
 
     __slots__ = (
@@ -4905,6 +4910,9 @@ class Parser(metaclass=_Parser):
                 # Parsing LIMIT x% (i.e x PERCENT) as a term leads to an error, since
                 # we try to build an exp.Mod expr. For that matter, we backtrack and instead
                 # consume the factor plus parse the percentage separately
+                # LIMIT x%（つまり x PERCENT）を項として解析すると、exp.Mod expr を構築しよう
+                # とするためエラーが発生します。そのため、バックトラックして、代わりに係数を消費し、
+                # パーセンテージを個別に解析します。
                 index = self._index
                 expression = self._try_parse(self._parse_term)
                 if isinstance(expression, exp.Mod):
@@ -5269,6 +5277,7 @@ class Parser(metaclass=_Parser):
             return None
 
         # handle day-time format interval span with omitted units:
+        # 単位を省略した日時形式の間隔範囲を処理します。
         #   INTERVAL '<number days> hh[:][mm[:ss[.ff]]]' <maybe `unit TO unit`>
         interval_span_units_omitted = None
         if (

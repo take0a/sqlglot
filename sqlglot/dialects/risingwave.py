@@ -42,6 +42,8 @@ class RisingWave(Postgres):
         def _parse_table_hints(self) -> t.Optional[t.List[exp.Expression]]:
             # There is no hint in risingwave.
             # Do nothing here to avoid WITH keywords conflict in CREATE SINK statement.
+            # risingwaveにはヒントがありません。
+            # CREATE SINKステートメントにおけるWITHキーワードの競合を避けるため、ここでは何もしないでください。
             return None
 
         def _parse_include_property(self) -> t.Optional[exp.Expression]:

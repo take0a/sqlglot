@@ -12,6 +12,7 @@ if t.TYPE_CHECKING:
 def _annotate_math_functions(self: TypeAnnotator, expression: exp.Expression) -> exp.Expression:
     """
     Many BigQuery math functions such as CEIL, FLOOR etc follow this return type convention:
+    CEIL、FLOOR などの多くの BigQuery 数学関数は、次の戻り値の型規則に従います。
     +---------+---------+---------+------------+---------+
     |  INPUT  | INT64   | NUMERIC | BIGNUMERIC | FLOAT64 |
     +---------+---------+---------+------------+---------+
@@ -68,6 +69,7 @@ def _annotate_concat(self: TypeAnnotator, expression: exp.Concat) -> exp.Concat:
     annotated = self._annotate_by_args(expression, "expressions")
 
     # Args must be BYTES or types that can be cast to STRING, return type is either BYTES or STRING
+    # 引数はBYTES型またはSTRING型にキャストできる型でなければなりません。戻り値の型はBYTES型またはSTRING型です。
     # https://cloud.google.com/bigquery/docs/reference/standard-sql/string_functions#concat
     if not annotated.is_type(exp.DataType.Type.BINARY, exp.DataType.Type.UNKNOWN):
         self._set_type(annotated, exp.DataType.Type.VARCHAR)
@@ -79,6 +81,7 @@ def _annotate_array(self: TypeAnnotator, expression: exp.Array) -> exp.Array:
     array_args = expression.expressions
 
     # BigQuery behaves as follows:
+    # BigQuery は次のように動作します。
     #
     # SELECT t, TYPEOF(t) FROM (SELECT 'foo') AS t            -- foo, STRUCT<STRING>
     # SELECT ARRAY(SELECT 'foo'), TYPEOF(ARRAY(SELECT 'foo')) -- foo, ARRAY<STRING>

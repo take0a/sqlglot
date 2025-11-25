@@ -42,7 +42,8 @@ class JSONPathTokenizer(Tokenizer):
 
 
 def parse(path: str, dialect: DialectType = None) -> exp.JSONPath:
-    """Takes in a JSON path string and parses it into a JSONPath expression."""
+    """Takes in a JSON path string and parses it into a JSONPath expression.
+    JSON パス文字列を受け取り、それを JSONPath 式に解析します。"""
     from sqlglot.dialects import Dialect
 
     jsonpath_tokenizer = Dialect.get_or_raise(dialect).jsonpath_tokenizer()
@@ -159,6 +160,10 @@ def parse(path: str, dialect: DialectType = None) -> exp.JSONPath:
         in it, e.g JSON_QUERY(..., '$. a b c ') should produce a single JSONPathKey(' a b c ').
         This is done by merging "consecutive" vars until a key separator is found (dot, colon etc)
         or the path string is exhausted.
+        変数のテキストを読み込み、返します。BigQueryでは、スペースを含むキーも有効です。
+        例えば、JSON_QUERY(..., '$. a b c ') は単一の JSONPathKey(' a b c ') を生成します。
+        これは、キー区切り文字（ドット、コロンなど）が見つかるまで、またはパス文字列が尽きるまで、
+        連続する変数を結合することで行われます。
         """
         prev_index = i - 2
 
@@ -177,6 +182,8 @@ def parse(path: str, dialect: DialectType = None) -> exp.JSONPath:
 
     # We canonicalize the JSON path AST so that it always starts with a
     # "root" element, so paths like "field" will be generated as "$.field"
+    # JSONパスASTは常に「ルート」要素で始まるように正規化されるため、
+    # 「field」のようなパスは「$.field」として生成されます。
     _match(TokenType.DOLLAR)
     expressions: t.List[exp.JSONPathPart] = [exp.JSONPathRoot()]
 

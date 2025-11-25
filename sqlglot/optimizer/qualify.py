@@ -34,8 +34,10 @@ def qualify(
 ) -> exp.Expression:
     """
     Rewrite sqlglot AST to have normalized and qualified tables and columns.
+    sqlglot AST を書き換えて、正規化および修飾されたテーブルと列を作成します。
 
     This step is necessary for all further SQLGlot optimizations.
+    この手順は、SQLGlot の今後の最適化に必要です。
 
     Example:
         >>> import sqlglot
@@ -46,26 +48,45 @@ def qualify(
 
     Args:
         expression: Expression to qualify.
+            修飾する式。
         db: Default database name for tables.
+            テーブルのデフォルトのデータベース名。
         catalog: Default catalog name for tables.
+            テーブルのデフォルトのカタログ名。
         schema: Schema to infer column names and types.
+            列名とタイプを推測するためのスキーマ。
         expand_alias_refs: Whether to expand references to aliases.
+            エイリアスへの参照を拡張するかどうか。
         expand_stars: Whether to expand star queries. This is a necessary step
             for most of the optimizer's rules to work; do not set to False unless you
             know what you're doing!
+            スタークエリを拡張するかどうか。
+            これは、ほとんどのオプティマイザールールが機能するために必要なステップです。
+            何をしているのかよく理解していない限り、Falseに設定しないでください。
         infer_schema: Whether to infer the schema if missing.
+            欠落している場合にスキーマを推測するかどうか。
         isolate_tables: Whether to isolate table selects.
+            テーブル選択を分離するかどうか。
         qualify_columns: Whether to qualify columns.
+            列を修飾するかどうか。
         allow_partial_qualification: Whether to allow partial qualification.
+            部分的な修飾を許可するかどうか。
         validate_qualify_columns: Whether to validate columns.
+            列を検証するかどうか。
         quote_identifiers: Whether to run the quote_identifiers step.
             This step is necessary to ensure correctness for case sensitive queries.
             But this flag is provided in case this step is performed at a later time.
+            quote_identifiers ステップを実行するかどうか。
+            このステップは、大文字と小文字を区別するクエリの正確性を確保するために必要です。
+            ただし、このフラグは、このステップが後で実行される場合に備えて提供されています。
         identify: If True, quote all identifiers, else only necessary ones.
+            True の場合はすべての識別子を引用符で囲み、それ以外の場合は必要な識別子のみを引用符で囲みます。
         on_qualify: Callback after a table has been qualified.
+            テーブルが修飾された後のコールバック。
 
     Returns:
         The qualified expression.
+        修飾された式。
     """
     schema = ensure_schema(schema, dialect=dialect)
     dialect = Dialect.get_or_raise(dialect)

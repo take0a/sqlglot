@@ -11,34 +11,50 @@ class Athena(Dialect):
     """
     Over the years, it looks like AWS has taken various execution engines, bolted on AWS-specific
     modifications and then built the Athena service around them.
+    AWS は長年にわたり、様々な実行エンジンを採用し、AWS 固有の変更を加えて、
+    それらを中心に Athena サービスを構築してきたようです。
 
     Thus, Athena is not simply hosted Trino, it's more like a router that routes SQL queries to an
     execution engine depending on the query type.
+    つまり、Athena は単にホストされた Trino ではなく、クエリの種類に応じて 
+    SQL クエリを実行エンジンにルーティングするルーターのようなものです。
 
     As at 2024-09-10, assuming your Athena workgroup is configured to use "Athena engine version 3",
     the following engines exist:
+    2024 年 9 月 10 日現在、Athena ワークグループが「Athena エンジン バージョン 3」
+    を使用するように構成されていると仮定すると、以下のエンジンが存在します。
 
     Hive:
      - Accepts mostly the same syntax as Hadoop / Hive
+     - Hadoop / Hive とほぼ同じ構文を使用できます
      - Uses backticks to quote identifiers
+     - 識別子の引用にはバッククォートを使用します
      - Has a distinctive DDL syntax (around things like setting table properties, storage locations etc)
        that is different from Trino
+     - Trino とは異なる独自の DDL 構文（テーブルプロパティやストレージの場所の設定など）を備えています
      - Used for *most* DDL, with some exceptions that get routed to the Trino engine instead:
+     - ほとんどの DDL で使用されますが、一部の例外は Trino エンジンにルーティングされます。
         - CREATE [EXTERNAL] TABLE (without AS SELECT)
         - ALTER
         - DROP
-
+    
     Trino:
       - Uses double quotes to quote identifiers
+      - 識別子を二重引用符で囲みます。
       - Used for DDL operations that involve SELECT queries, eg:
+      - SELECTクエリを含むDDL操作に使用します。例:
         - CREATE VIEW / DROP VIEW
         - CREATE TABLE... AS SELECT
       - Used for DML operations
+      - DML操作に使用される
         - SELECT, INSERT, UPDATE, DELETE, MERGE
 
     The SQLGlot Athena dialect tries to identify which engine a query would be routed to and then uses the
     tokenizer / parser / generator for that engine. This is unfortunately necessary, as there are certain
     incompatibilities between the engines' dialects and thus can't be handled by a single, unifying dialect.
+    SQLGlot Athena方言は、クエリがどのエンジンにルーティングされるかを識別し、そのエンジンの
+    トークナイザー／パーサー／ジェネレーターを使用します。残念ながら、エンジン方言間には一定の非互換性があり、
+    単一の統合方言では処理できないため、この処理は必須となっています。
 
     References:
     - https://docs.aws.amazon.com/athena/latest/ug/ddl-reference.html
@@ -75,6 +91,8 @@ class Athena(Dialect):
 
     # This Tokenizer consumes a combination of HiveQL and Trino SQL and then processes the tokens
     # to disambiguate which dialect needs to be actually used in order to tokenize correctly.
+    # このトークナイザーは、HiveQL と Trino SQL の組み合わせを使用し、トークンを処理して、
+    # 正しくトークン化するために実際にどの方言を使用する必要があるかを明確にします。
     class Tokenizer(tokens.Tokenizer):
         IDENTIFIERS = Trino.Tokenizer.IDENTIFIERS + Hive.Tokenizer.IDENTIFIERS
         STRING_ESCAPES = Trino.Tokenizer.STRING_ESCAPES + Hive.Tokenizer.STRING_ESCAPES
@@ -219,6 +237,8 @@ def _is_iceberg_table(properties: exp.Properties) -> bool:
 def _location_property_sql(self: Athena.Generator, e: exp.LocationProperty):
     # If table_type='iceberg', the LocationProperty is called 'location'
     # Otherwise, it's called 'external_location'
+    # table_type='iceberg'の場合、LocationPropertyは'location'と呼ばれます。
+    # それ以外の場合は、'external_location'と呼ばれます。
     # ref: https://docs.aws.amazon.com/athena/latest/ug/create-table-as.html
 
     prop_name = "external_location"
@@ -233,6 +253,8 @@ def _location_property_sql(self: Athena.Generator, e: exp.LocationProperty):
 def _partitioned_by_property_sql(self: Athena.Generator, e: exp.PartitionedByProperty) -> str:
     # If table_type='iceberg' then the table property for partitioning is called 'partitioning'
     # If table_type='hive' it's called 'partitioned_by'
+    # table_type='iceberg'の場合、パーティション分割のテーブルプロパティは'partitioning'と呼ばれます。
+    # table_type='hive'の場合、'partitioned_by'と呼ばれます。
     # ref: https://docs.aws.amazon.com/athena/latest/ug/create-table-as.html#ctas-table-properties
 
     prop_name = "partitioned_by"
@@ -245,11 +267,15 @@ def _partitioned_by_property_sql(self: Athena.Generator, e: exp.PartitionedByPro
 
 
 # Athena extensions to Hive's generator
+# Hive のジェネレータへの Athena 拡張
 class _HiveGenerator(Hive.Generator):
     def alter_sql(self, expression: exp.Alter) -> str:
         # Package any ALTER TABLE ADD actions into a Schema object, so it gets generated as
         # `ALTER TABLE .. ADD COLUMNS(...)`, instead of `ALTER TABLE ... ADD COLUMN`, which
         # is invalid syntax on Athena
+        # ALTER TABLE ADD アクションをスキーマ オブジェクトにパッケージ化します。
+        # これにより、Athena では無効な構文である `ALTER TABLE ... ADD COLUMN` ではなく 
+        # `ALTER TABLE .. ADD COLUMNS(...)` として生成されます。
         if isinstance(expression, exp.Alter) and expression.kind == "TABLE":
             if expression.actions and isinstance(expression.actions[0], exp.ColumnDef):
                 new_actions = exp.Schema(expressions=expression.actions)
@@ -259,6 +285,7 @@ class _HiveGenerator(Hive.Generator):
 
 
 # Athena extensions to Trino's tokenizer
+# Trino のトークナイザーへの Athena 拡張
 class _TrinoTokenizer(Trino.Tokenizer):
     KEYWORDS = {
         **Trino.Tokenizer.KEYWORDS,
@@ -267,6 +294,7 @@ class _TrinoTokenizer(Trino.Tokenizer):
 
 
 # Athena extensions to Trino's parser
+# Trino のパーサーへの Athena 拡張
 class _TrinoParser(Trino.Parser):
     STATEMENT_PARSERS = {
         **Trino.Parser.STATEMENT_PARSERS,
@@ -275,6 +303,7 @@ class _TrinoParser(Trino.Parser):
 
 
 # Athena extensions to Trino's generator
+# TrinoのジェネレータへのAthena拡張
 class _TrinoGenerator(Trino.Generator):
     PROPERTIES_LOCATION = {
         **Trino.Generator.PROPERTIES_LOCATION,

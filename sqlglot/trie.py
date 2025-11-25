@@ -13,9 +13,12 @@ class TrieResult(Enum):
 def new_trie(keywords: t.Iterable[key], trie: t.Optional[t.Dict] = None) -> t.Dict:
     """
     Creates a new trie out of a collection of keywords.
+    キーワードのコレクションから新しいトライを作成します。
 
     The trie is represented as a sequence of nested dictionaries keyed by either single
     character strings, or by 0, which is used to designate that a keyword is in the trie.
+    トライは、単一の文字列またはキーワードがトライ内にあることを示すために使用される 
+    0 をキーとする、ネストされた辞書のシーケンスとして表されます。
 
     Example:
         >>> new_trie(["bla", "foo", "blab"])
@@ -23,10 +26,13 @@ def new_trie(keywords: t.Iterable[key], trie: t.Optional[t.Dict] = None) -> t.Di
 
     Args:
         keywords: the keywords to create the trie from.
+            トライを作成するためのキーワード。
         trie: a trie to mutate instead of creating a new one
+            新しいものを作るのではなく、変化させようとする試み
 
     Returns:
         The trie corresponding to `keywords`.
+        `keywords` に対応するトライ。
     """
     trie = {} if trie is None else trie
 
@@ -43,6 +49,7 @@ def new_trie(keywords: t.Iterable[key], trie: t.Optional[t.Dict] = None) -> t.Di
 def in_trie(trie: t.Dict, key: key) -> t.Tuple[TrieResult, t.Dict]:
     """
     Checks whether a key is in a trie.
+    キーがトライ内にあるかどうかを確認します。
 
     Examples:
         >>> in_trie(new_trie(["cat"]), "bob")
@@ -56,11 +63,15 @@ def in_trie(trie: t.Dict, key: key) -> t.Tuple[TrieResult, t.Dict]:
 
     Args:
         trie: The trie to be searched.
+            検索するトライ。
         key: The target key.
+            ターゲットキー。
 
     Returns:
         A pair `(value, subtrie)`, where `subtrie` is the sub-trie we get at the point
         where the search stops, and `value` is a TrieResult value that can be one of:
+        ペア `(value, subtrie)`。ここで、`subtrie` は検索が停止した時点で取得するサブトライであり、
+        `value` は次のいずれかの TrieResult 値です。
 
         - TrieResult.FAILED: the search was unsuccessful
         - TrieResult.PREFIX: `value` is a prefix of a keyword in `trie`

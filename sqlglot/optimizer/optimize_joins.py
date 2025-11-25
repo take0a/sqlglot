@@ -11,6 +11,7 @@ JOIN_ATTRS = ("on", "side", "kind", "using", "method")
 def optimize_joins(expression):
     """
     Removes cross joins if possible and reorder joins based on predicate dependencies.
+    可能な場合はクロス結合を削除し、述語の依存関係に基づいて結合を並べ替えます。
 
     Example:
         >>> from sqlglot import parse_one
@@ -61,6 +62,7 @@ def optimize_joins(expression):
 def reorder_joins(expression):
     """
     Reorder joins by topological sort order based on predicate references.
+    述語参照に基づいて、トポロジカルソート順序で結合を並べ替えます。
     """
     for from_ in expression.find_all(exp.From):
         parent = from_.parent
@@ -85,6 +87,7 @@ def reorder_joins(expression):
 def normalize(expression):
     """
     Remove INNER and OUTER from joins as they are optional.
+    INNER と OUTER はオプションなので、結合から削除します。
     """
     for join in expression.find_all(exp.Join):
         if not any(join.args.get(k) for k in JOIN_ATTRS):
@@ -109,9 +112,13 @@ def other_table_names(join: exp.Join) -> t.Set[str]:
 def _is_reorderable(joins: t.List[exp.Join]) -> bool:
     """
     Checks if joins can be reordered without changing query semantics.
+    クエリのセマンティクスを変更せずに結合の順序を変更できるかどうかを確認します。
 
     Joins with a side (LEFT, RIGHT, FULL) cannot be reordered easily,
     the order affects which rows are included in the result.
+    左右結合（LEFT、RIGHT、FULL）は簡単に順序を変更できません。
+    順序によって結果に含まれる行が左右されるためです。
+
 
     Example:
         >>> from sqlglot import parse_one, exp

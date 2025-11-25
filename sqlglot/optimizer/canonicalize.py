@@ -11,12 +11,15 @@ from sqlglot.optimizer.annotate_types import TypeAnnotator
 
 def canonicalize(expression: exp.Expression, dialect: DialectType = None) -> exp.Expression:
     """Converts a sql expression into a standard form.
+    SQL 式を標準形式に変換します。
 
     This method relies on annotate_types because many of the
     conversions rely on type inference.
+    多くの変換が型推論に依存しているため、このメソッドは annotate_types に依存します。
 
     Args:
         expression: The expression to canonicalize.
+            正規化する式。
     """
 
     dialect = Dialect.get_or_raise(dialect)
@@ -39,6 +42,8 @@ def add_text_to_concat(node: exp.Expression) -> exp.Expression:
             expressions=[node.left, node.right],
             # All known dialects, i.e. Redshift and T-SQL, that support
             # concatenating strings with the + operator do not coalesce NULLs.
+            # + 演算子を使用した文字列の連結をサポートするすべての既知の方言
+            #  (Redshift および T-SQL) では、NULL は結合されません。
             coalesce=False,
         )
     return node
@@ -122,6 +127,7 @@ def ensure_bools(
     elif isinstance(expression, exp.Not):
         replace_func(expression.this)
         # We can't replace num in CASE x WHEN num ..., because it's not the full predicate
+        # CASE x WHEN num ...のnumを置き換えることはできません。これは完全な述語ではないためです。
     elif isinstance(expression, exp.If) and not (
         isinstance(expression.parent, exp.Case) and expression.parent.this
     ):
@@ -170,6 +176,8 @@ def _coerce_date(
             else:
                 # If b is not a datetime string, we conservatively promote it to a DATETIME,
                 # in order to ensure there are no surprising truncations due to downcasting
+                # bが日付時刻文字列でない場合は、ダウンキャストによる予期せぬ切り捨てが起こらないように、
+                # 保守的にDATETIMEに昇格します。
                 b_type = exp.DataType.Type.DATETIME
 
             target_type = (
@@ -196,6 +204,7 @@ def _coerce_timeunit_arg(arg: exp.Expression, unit: t.Optional[exp.Expression]) 
             return arg.replace(exp.cast(arg.copy(), to=exp.DataType.Type.DATE))
 
         # An ISO date is also an ISO datetime, but not vice versa
+        # ISO日付はISO日付時刻でもあるが、その逆はあり得ない。
         if is_iso_date_ or is_iso_datetime(date_text):
             return arg.replace(exp.cast(arg.copy(), to=exp.DataType.Type.DATETIME))
 
@@ -219,6 +228,10 @@ def _replace_cast(node: exp.Expression, to: exp.DATA_TYPE) -> None:
 # this is different in that it only operates on int types, this is because
 # presto has a boolean type whereas tsql doesn't (people use bits)
 # with y as (select true as x) select x = 0 FROM y -- illegal presto query
+# これは元々 Presto 用に設計されたもので、TSQL にも同様の変換がありますが、
+# これは int 型のみを操作するという点で異なります。Presto にはブール型がありますが、
+# TSQL にはブール型がないからです (ビットを使用します)。y の場合 (true を x として選択)、
+# select x = 0 FROM y -- 不正な Presto クエリです
 def _replace_int_predicate(expression: exp.Expression) -> None:
     if isinstance(expression, exp.Coalesce):
         for child in expression.iter_expressions():

@@ -74,6 +74,8 @@ class Teradata(Dialect):
     class Tokenizer(tokens.Tokenizer):
         # Tested each of these and they work, although there is no
         # Teradata documentation explicitly mentioning them.
+        # これらをそれぞれテストしたところ、動作しました。
+        # ただし、これらを明示的に言及している Teradata のドキュメントはありません。
         HEX_STRINGS = [("X'", "'"), ("x'", "'"), ("0x", "")]
         # https://docs.teradata.com/r/Teradata-Database-SQL-Functions-Operators-Expressions-and-Predicates/March-2017/Comparison-Operators-and-Functions/Comparison-Operators/ANSI-Compliance
         # https://docs.teradata.com/r/SQL-Functions-Operators-Expressions-and-Predicates/June-2017/Arithmetic-Trigonometric-Hyperbolic-Operators/Functions
@@ -105,6 +107,7 @@ class Teradata(Dialect):
         KEYWORDS.pop("/*+")
 
         # Teradata does not support % as a modulo operator
+        # Teradataは%をモジュロ演算子としてサポートしていません
         SINGLE_TOKENS = {**tokens.Tokenizer.SINGLE_TOKENS}
         SINGLE_TOKENS.pop("%")
 
@@ -209,6 +212,7 @@ class Teradata(Dialect):
             )
 
         # FROM before SET in Teradata UPDATE syntax
+        # Teradata UPDATE構文におけるSETの前のFROM
         # https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Teradata-VantageTM-SQL-Data-Manipulation-Language-17.20/Statement-Syntax/UPDATE/UPDATE-Syntax-Basic-Form-FROM-Clause
         def _parse_update(self) -> exp.Update:
             return self.expression(
@@ -235,6 +239,7 @@ class Teradata(Dialect):
             self._match(TokenType.EQ)
 
             # Handle both string literals and NONE keyword
+            # 文字列リテラルとNONEキーワードの両方を処理する
             if self._match_text_seq("NONE"):
                 query_band_string: t.Optional[exp.Expression] = exp.Var(this="NONE")
             else:
@@ -244,6 +249,7 @@ class Teradata(Dialect):
             self._match_text_seq("FOR")
 
             # Handle scope - can be SESSION, TRANSACTION, VOLATILE, or SESSION VOLATILE
+            # ハンドルのスコープ - SESSION、TRANSACTION、VOLATILE、または SESSION VOLATILE のいずれかになります
             if self._match_text_seq("SESSION", "VOLATILE"):
                 scope = "SESSION VOLATILE"
             elif self._match_texts(("SESSION", "TRANSACTION")):
@@ -276,6 +282,8 @@ class Teradata(Dialect):
             # Teradata uses a `(FORMAT <format_string>)` clause after column references to
             # override the output format. When we see this pattern we do not
             # parse it as a function call.  The syntax is documented at
+            # Teradataは、列参照の後に`(FORMAT <format_string>)`句を使用して出力形式をオーバーライドします。
+            # このパターンは関数呼び出しとして解析されません。構文は次のURLで説明されています。
             # https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Types-and-Literals/Data-Type-Formats-and-Format-Phrases/FORMAT
             if (
                 self._next
@@ -297,6 +305,7 @@ class Teradata(Dialect):
 
             if self._match_pair(TokenType.L_PAREN, TokenType.FORMAT):
                 # `(FORMAT <format_string>)` after a column specifies a Teradata format override.
+                # 列の後の `(FORMAT <format_string>)` は、Teradata 形式のオーバーライドを指定します。
                 # See https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Types-and-Literals/Data-Type-Formats-and-Format-Phrases/FORMAT
                 fmt_string = self._parse_string()
                 self._match_r_paren()
@@ -363,6 +372,7 @@ class Teradata(Dialect):
         def cast_sql(self, expression: exp.Cast, safe_prefix: t.Optional[str] = None) -> str:
             if expression.to.this == exp.DataType.Type.UNKNOWN and expression.args.get("format"):
                 # We don't actually want to print the unknown type in CAST(<value> AS FORMAT <format>)
+                # 実際には、CAST(<value> AS FORMAT <format>) で未知の型を出力したくありません。
                 expression.to.pop()
 
             return super().cast_sql(expression, safe_prefix=safe_prefix)
@@ -381,6 +391,7 @@ class Teradata(Dialect):
             return f"PARTITION BY {self.sql(expression, 'this')}"
 
         # FROM before SET in Teradata UPDATE syntax
+        # Teradata UPDATE構文におけるSETの前のFROM
         # https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/Teradata-VantageTM-SQL-Data-Manipulation-Language-17.20/Statement-Syntax/UPDATE/UPDATE-Syntax-Basic-Form-FROM-Clause
         def update_sql(self, expression: exp.Update) -> str:
             this = self.sql(expression, "this")

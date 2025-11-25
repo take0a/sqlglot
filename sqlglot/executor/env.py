@@ -34,13 +34,16 @@ def filter_nulls(func, empty_null=True):
 def null_if_any(*required):
     """
     Decorator that makes a function return `None` if any of the `required` arguments are `None`.
+    `required` 引数のいずれかが `None` の場合に関数が `None` を返すようにするデコレータ。
 
     This also supports decoration with no arguments, e.g.:
+    引数なしの装飾もサポートします。例:
 
         @null_if_any
         def foo(a, b): ...
 
     In which case all arguments are required.
+    その場合、すべての引数は必須となります。
     """
     f = None
     if len(required) == 1 and callable(required[0]):

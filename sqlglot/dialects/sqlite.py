@@ -31,7 +31,8 @@ def _build_strftime(args: t.List) -> exp.Anonymous | exp.TimeToStr:
 
 
 def _transform_create(expression: exp.Expression) -> exp.Expression:
-    """Move primary key to a column and enforce auto_increment on primary keys."""
+    """Move primary key to a column and enforce auto_increment on primary keys.
+    主キーを列に移動し、主キーに auto_increment を適用します。"""
     schema = expression.this
 
     if isinstance(expression, exp.Create) and isinstance(schema, exp.Schema):
@@ -138,6 +139,7 @@ class SQLite(Dialect):
 
         def _parse_unique(self) -> exp.UniqueColumnConstraint:
             # Do not consume more tokens if UNIQUE is used as a standalone constraint, e.g:
+            # UNIQUE がスタンドアロン制約として使用されている場合は、これ以上トークンを消費しないでください。例:
             # CREATE TABLE foo (bar TEXT UNIQUE REFERENCES baz ...)
             if self._curr.text.upper() in self.CONSTRAINT_PARSERS:
                 return self.expression(exp.UniqueColumnConstraint)
@@ -236,6 +238,7 @@ class SQLite(Dialect):
         }
 
         # SQLite doesn't generally support CREATE TABLE .. properties
+        # SQLite は一般的に CREATE TABLE .. プロパティをサポートしていません
         # https://www.sqlite.org/lang_createtable.html
         PROPERTIES_LOCATION = {
             prop: exp.Properties.Location.UNSUPPORTED
@@ -244,6 +247,8 @@ class SQLite(Dialect):
 
         # There are a few exceptions (e.g. temporary tables) which are supported or
         # can be transpiled to SQLite, so we explicitly override them accordingly
+        # いくつかの例外（一時テーブルなど）はサポートされているか、
+        # SQLiteにトランスパイルできるため、それに応じて明示的にオーバーライドします。
         PROPERTIES_LOCATION[exp.LikeProperty] = exp.Properties.Location.POST_SCHEMA
         PROPERTIES_LOCATION[exp.TemporaryProperty] = exp.Properties.Location.POST_CREATE
 

@@ -36,19 +36,24 @@ def execute(
 ) -> Table:
     """
     Run a sql query against data.
+    データに対して SQL クエリを実行します。
 
     Args:
         sql: a sql statement.
         schema: database schema.
             This can either be an instance of `Schema` or a mapping in one of the following forms:
+            これは `Schema` のインスタンス、または次のいずれかの形式のマッピングのいずれかになります。
             1. {table: {col: type}}
             2. {db: {table: {col: type}}}
             3. {catalog: {db: {table: {col: type}}}}
         dialect: the SQL dialect to apply during parsing (eg. "spark", "hive", "presto", "mysql").
+            解析中に適用する SQL 方言 (例: "spark"、"hive"、"presto"、"mysql")。
         tables: additional tables to register.
+            登録する追加のテーブル。
 
     Returns:
         Simple columnar data structure.
+        シンプルな列形式のデータ構造。
     """
     tables_ = ensure_tables(tables, dialect=dialect)
 

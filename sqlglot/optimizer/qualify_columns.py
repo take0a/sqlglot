@@ -27,6 +27,7 @@ def qualify_columns(
 ) -> exp.Expression:
     """
     Rewrite sqlglot AST to have fully qualified columns.
+    sqlglot AST を完全修飾列を持つように書き換えます。
 
     Example:
         >>> import sqlglot
@@ -37,19 +38,28 @@ def qualify_columns(
 
     Args:
         expression: Expression to qualify.
+            修飾する式
         schema: Database schema.
         expand_alias_refs: Whether to expand references to aliases.
+            エイリアスへの参照を拡張するかどうか。
         expand_stars: Whether to expand star queries. This is a necessary step
             for most of the optimizer's rules to work; do not set to False unless you
             know what you're doing!
+            スタークエリを拡張するかどうか。
+            これは、ほとんどのオプティマイザールールが機能するために必要なステップです。
+            何をしているのかよく理解していない限り、Falseに設定しないでください。
         infer_schema: Whether to infer the schema if missing.
+            欠落している場合にスキーマを推測するかどうか。
         allow_partial_qualification: Whether to allow partial qualification.
+            部分的な資格を許可するかどうか。
 
     Returns:
         The qualified expression.
+        修飾された式
 
     Notes:
         - Currently only handles a single PIVOT or UNPIVOT operator
+        - 現在は単一のPIVOTまたはUNPIVOT演算子のみを処理します
     """
     schema = ensure_schema(schema, dialect=dialect)
     annotator = TypeAnnotator(schema)
@@ -104,6 +114,7 @@ def qualify_columns(
         _expand_group_by(scope, dialect)
 
         # DISTINCT ON and ORDER BY follow the same rules (tested in DuckDB, Postgres, ClickHouse)
+        # DISTINCT ON と ORDER BY は同じルールに従います (DuckDB、Postgres、ClickHouse でテスト済み)
         # https://www.postgresql.org/docs/current/sql-select.html#SQL-DISTINCT
         _expand_order_by_and_distinct_on(scope, resolver)
 
@@ -129,6 +140,9 @@ def validate_qualify_columns(expression: E) -> E:
                 # New columns produced by the UNPIVOT can't be qualified, but there may be columns
                 # under the UNPIVOT's IN clause that can and should be qualified. We recompute
                 # this list here to ensure those in the former category will be excluded.
+                # UNPIVOTによって生成される新しい列は修飾できませんが、UNPIVOTのIN句には
+                # 修飾可能な列が存在する可能性があり、修飾する必要がある場合もあります。
+                # ここでは、前者のカテゴリに該当する列が除外されるように、このリストを再計算します。
                 unpivot_columns = set(_unpivot_columns(scope.pivots[0]))
                 unqualified_columns = [c for c in unqualified_columns if c not in unpivot_columns]
 
@@ -176,6 +190,7 @@ def _unpivot_columns(unpivot: exp.Pivot) -> t.Iterator[exp.Column]:
 def _pop_table_column_aliases(derived_tables: t.List[exp.CTE | exp.Subquery]) -> None:
     """
     Remove table column aliases.
+    テーブル列のエイリアスを削除します。
 
     For example, `col1` and `col2` will be dropped in SELECT ... FROM (SELECT ...) AS foo(col1, col2)
     """
@@ -203,6 +218,7 @@ def _expand_using(scope: Scope, resolver: Resolver) -> t.Dict[str, t.Any]:
         raise OptimizeError(f"Joins {names} missing source table {scope.expression}")
 
     # Mapping of automatically joined column names to an ordered set of source names (dict).
+    # 自動的に結合された列名を順序付けられたソース名のセット (dict) にマッピングします。
     column_tables: t.Dict[str, t.Dict[str, t.Any]] = {}
 
     for source_name in ordered:
@@ -251,10 +267,13 @@ def _expand_using(scope: Scope, resolver: Resolver) -> t.Dict[str, t.Any]:
             conditions.append(lhs.eq(exp.column(identifier, table=join_table)))
 
             # Set all values in the dict to None, because we only care about the key ordering
+            # キーの順序のみを気にするため、辞書内のすべての値をNoneに設定します。
             tables = column_tables.setdefault(identifier, {})
 
             # Do not update the dict if this was a SEMI/ANTI join in
             # order to avoid generating COALESCE columns for this join pair
+            # この結合ペアに COALESCE 列が生成されないようにするため、
+            # これが SEMI/ANTI 結合の場合は辞書を更新しないでください。
             if not is_semi_or_anti_join:
                 if table not in tables:
                     tables[table] = None
@@ -273,9 +292,11 @@ def _expand_using(scope: Scope, resolver: Resolver) -> t.Dict[str, t.Any]:
 
                 if isinstance(column.parent, exp.Select):
                     # Ensure the USING column keeps its name if it's projected
+                    # USING列が投影されている場合は、その名前が保持されることを確認します。
                     replacement = alias(replacement, alias=column.name, copy=False)
                 elif isinstance(column.parent, exp.Struct):
                     # Ensure the USING column keeps its name if it's an anonymous STRUCT field
+                    # 匿名のSTRUCTフィールドの場合、USING列の名前が保持されることを確認します。
                     replacement = exp.PropertyEQ(
                         this=exp.to_identifier(column.name), expression=replacement
                     )
@@ -290,6 +311,7 @@ def _expand_alias_refs(
 ) -> None:
     """
     Expand references to aliases.
+    エイリアスへの参照を拡張します。
     Example:
         SELECT y.foo AS bar, bar * 2 AS baz FROM y
      => SELECT y.foo AS bar, y.foo * 2 AS baz FROM y
@@ -321,6 +343,11 @@ def _expand_alias_refs(
             #   SELECT FUNC(col) AS col FROM t GROUP BY col --> Can be expanded
             #   SELECT FUNC(col) AS col FROM t GROUP BY FUNC(col)  --> Shouldn't be expanded, will result to FUNC(FUNC(col))
             # This not required for the HAVING clause as it can evaluate expressions using both the alias & the table columns
+            #
+            # BigQuery の GROUP BY では、スタンドアロン名に対してのみエイリアス展開が可能です。例:
+            #   SELECT FUNC(col) AS col FROM t GROUP BY col --> 展開可能
+            #   SELECT FUNC(col) AS col FROM t GROUP BY FUNC(col) --> 展開すべきではありません。結果は FUNC(FUNC(col)) になります
+            # HAVING 句ではエイリアスとテーブル列の両方を使用して式を評価できるため、これは必須ではありません
             if expand_only_groupby and is_group_by and column.parent is not node:
                 continue
 
@@ -339,6 +366,11 @@ def _expand_alias_refs(
                 # SELECT x.a, max(x.b) as x FROM x GROUP BY 1 HAVING x > 1;
                 # If "HAVING x" is expanded to "HAVING max(x.b)", BQ would blindly replace the "x" reference with the projection MAX(x.b)
                 # i.e HAVING MAX(MAX(x.b).b), resulting in the error: "Aggregations of aggregations are not allowed"
+                #
+                # BigQuery の HAVING 句は、エイリアスがソースと一致すると混乱します。
+                #   SELECT x.a, max(x.b) as x FROM x GROUP BY 1 HAVING x > 1;
+                # 「HAVING x」が「HAVING max(x.b)」に展開されると、BQ は「x」参照を射影 MAX(x.b) に盲目的に置き換えます。
+                # つまり、HAVING MAX(MAX(x.b).b) となり、「集計の集計は許可されていません」というエラーが発生します。
                 if is_having and is_bigquery:
                     skip_replace = skip_replace or any(
                         node.parts[0].name in projections
@@ -352,6 +384,11 @@ def _expand_alias_refs(
                     # SELECT id, ARRAY_AGG(col) AS custom_fields FROM custom_fields GROUP BY id HAVING id >= 1
                     # We should not qualify "id" with "custom_fields" in either clause, since the aggregation shadows the actual table
                     # and we'd get the error: "Column custom_fields contains an aggregation function, which is not allowed in GROUP BY clause"
+                    #
+                    # BigQuery の GROUP BY 句と HAVING 句は、列名がソース名と射影に一致すると混乱します。例:
+                    #   SELECT id, ARRAY_AGG(col) AS custom_fields FROM custom_fields GROUP BY id HAVING id >= 1
+                    # どちらの句でも「id」を「custom_fields」で修飾しないでください。集計によって実際のテーブルが隠蔽され、
+                    # 「列 custom_fields には集計関数が含まれていますが、GROUP BY 句では許可されていません」というエラーが発生します。
                     column.replace(exp.to_identifier(column.name))
                     replaced = True
                     return
@@ -386,6 +423,7 @@ def _expand_alias_refs(
 
     # We shouldn't expand aliases if they match the recursive CTE's columns
     # and we are in the recursive part (right sub tree) of the CTE
+    # 再帰CTEの列と一致し、CTEの再帰部分（右サブツリー）にいる場合は、エイリアスを展開しないでください。
     if parent_scope and on_right_sub_tree:
         cte = parent_scope.expression.parent
         if cte.find_ancestor(exp.With).recursive:
@@ -398,6 +436,7 @@ def _expand_alias_refs(
     replace_columns(expression.args.get("qualify"), resolve_table=True)
 
     # Snowflake allows alias expansion in the JOIN ... ON clause (and almost everywhere else)
+    # Snowflakeでは、JOIN ... ON句（およびほぼすべての場所）でエイリアスの拡張が可能です。
     # https://docs.snowflake.com/en/sql-reference/sql/select#usage-notes
     if dialect == "snowflake":
         for join in expression.args.get("joins") or []:
@@ -473,6 +512,8 @@ def _expand_positional_references(
                     if ambiguous_projections is None:
                         # When a projection name is also a source name and it is referenced in the
                         # GROUP BY clause, BQ can't understand what the identifier corresponds to
+                        # プロジェクション名がソース名でもあり、GROUP BY句で参照されている場合、
+                        # BQは識別子が何に対応するかを理解できません。
                         ambiguous_projections = {
                             s.alias_or_name
                             for s in scope.expression.selects
@@ -511,9 +552,12 @@ def _select_by_pos(scope: Scope, node: exp.Literal) -> exp.Alias:
 def _convert_columns_to_dots(scope: Scope, resolver: Resolver) -> None:
     """
     Converts `Column` instances that represent STRUCT or JSON field lookup into chained `Dots`.
+    STRUCT または JSON フィールドのルックアップを表す `Column` インスタンスを、連結された `Dots` に変換します。
 
     These lookups may be parsed as columns (e.g. "col"."field"."field2"), but they need to be
     normalized to `Dot(Dot(...(<table>.<column>, field1), field2, ...))` to be qualified properly.
+    これらのルックアップは列として解析できます（例: "col"."field"."field2"）。ただし、適切に修飾するには、
+    `Dot(Dot(...(<table>.<column>, field1), field2, ...))` に正規化する必要があります。
     """
     converted = False
     for column in itertools.chain(scope.columns, scope.stars):
@@ -535,6 +579,7 @@ def _convert_columns_to_dots(scope: Scope, resolver: Resolver) -> None:
 
             if root.name in scope.sources:
                 # The struct is already qualified, but we still need to change the AST
+                # 構造体はすでに修飾されていますが、ASTを変更する必要があります。
                 column_table = root
                 root, *parts = parts
                 was_qualified = True
@@ -548,6 +593,7 @@ def _convert_columns_to_dots(scope: Scope, resolver: Resolver) -> None:
 
                 if dot_parts:
                     # Remove the actual column parts from the rest of dot parts
+                    # 残りのドット部分から実際の列部分を削除します
                     new_column.meta["dot_parts"] = dot_parts[2 if was_qualified else 1 :]
 
                 column.replace(exp.Dot.build([new_column, *parts]))
@@ -555,6 +601,8 @@ def _convert_columns_to_dots(scope: Scope, resolver: Resolver) -> None:
     if converted:
         # We want to re-aggregate the converted columns, otherwise they'd be skipped in
         # a `for column in scope.columns` iteration, even though they shouldn't be
+        # 変換された列を再集計したいのですが、
+        # そうしないと`for column in scope.columns`の反復処理でスキップされてしまいます。
         scope.clear_cache()
 
 
@@ -563,7 +611,8 @@ def _qualify_columns(
     resolver: Resolver,
     allow_partial_qualification: bool,
 ) -> None:
-    """Disambiguate columns, ensuring each column specifies a source"""
+    """Disambiguate columns, ensuring each column specifies a source
+    列の曖昧さを解消し、各列がソースを指定していることを確認します。"""
     for column in scope.columns:
         column_table = column.table
         column_name = column.name
@@ -582,10 +631,13 @@ def _qualify_columns(
             if scope.pivots and not column.find_ancestor(exp.Pivot):
                 # If the column is under the Pivot expression, we need to qualify it
                 # using the name of the pivoted source instead of the pivot's alias
+                # 列がピボット式の下にある場合は、ピボットのエイリアスではなく、
+                # ピボットされたソースの名前を使用して修飾する必要があります。
                 column.set("table", exp.to_identifier(scope.pivots[0].alias))
                 continue
 
             # column_table can be a '' because bigquery unnest has no table alias
+            # bigquery unnest にはテーブルエイリアスがないので、column_table は '' になることがあります。
             column_table = resolver.get_table(column)
 
             if column_table:
@@ -596,6 +648,7 @@ def _qualify_columns(
                 and column_name in scope.selected_sources
             ):
                 # BigQuery allows tables to be referenced as columns, treating them as structs
+                # BigQueryではテーブルを列として参照し、構造体として扱うことができる
                 scope.replace(column, exp.TableColumn(this=column.this))
 
     for pivot in scope.pivots:
@@ -609,23 +662,28 @@ def _qualify_columns(
 def _expand_struct_stars_bigquery(
     expression: exp.Dot,
 ) -> t.List[exp.Alias]:
-    """[BigQuery] Expand/Flatten foo.bar.* where bar is a struct column"""
+    """[BigQuery] Expand/Flatten foo.bar.* where bar is a struct column
+    [BigQuery] foo.bar.* を展開/フラット化する（bar は構造体の列）"""
 
     dot_column = expression.find(exp.Column)
     if not isinstance(dot_column, exp.Column) or not dot_column.is_type(exp.DataType.Type.STRUCT):
         return []
 
     # All nested struct values are ColumnDefs, so normalize the first exp.Column in one
+    # ネストされた構造体の値はすべてColumnDefsなので、最初のexp.Columnを正規化します。
     dot_column = dot_column.copy()
     starting_struct = exp.ColumnDef(this=dot_column.this, kind=dot_column.type)
 
     # First part is the table name and last part is the star so they can be dropped
+    # 最初の部分はテーブル名で、最後の部分は星なので削除できます
     dot_parts = expression.parts[1:-1]
 
     # If we're expanding a nested struct eg. t.c.f1.f2.* find the last struct (f2 in this case)
+    # ネストされた構造体を展開する場合、例えば t.c.f1.f2.* は最後の構造体（この場合は f2）を見つけます。
     for part in dot_parts[1:]:
         for field in t.cast(exp.DataType, starting_struct.kind).expressions:
             # Unable to expand star unless all fields are named
+            # すべてのフィールドに名前が付けられていないとスターを展開できません
             if not isinstance(field.this, exp.Identifier):
                 return []
 
@@ -634,6 +692,7 @@ def _expand_struct_stars_bigquery(
                 break
         else:
             # There is no matching field in the struct
+            # 構造体に一致するフィールドがありません
             return []
 
     taken_names = set()
@@ -643,6 +702,7 @@ def _expand_struct_stars_bigquery(
         name = field.name
 
         # Ambiguous or anonymous fields can't be expanded
+        # 曖昧または匿名のフィールドは拡張できません
         if name in taken_names or not isinstance(field.this, exp.Identifier):
             return []
 
@@ -661,13 +721,16 @@ def _expand_struct_stars_bigquery(
 
 
 def _expand_struct_stars_risingwave(expression: exp.Dot) -> t.List[exp.Alias]:
-    """[RisingWave] Expand/Flatten (<exp>.bar).*, where bar is a struct column"""
+    """[RisingWave] Expand/Flatten (<exp>.bar).*, where bar is a struct column
+    [RisingWave] Expand/Flatten (<exp>.bar).*、barは構造体の列です"""
 
     # it is not (<sub_exp>).* pattern, which means we can't expand
+    # これは (<sub_exp>).* パターンではないので、展開できません。
     if not isinstance(expression.this, exp.Paren):
         return []
 
     # find column definition to get data-type
+    # データ型を取得するための列定義を見つける
     dot_column = expression.find(exp.Column)
     if not isinstance(dot_column, exp.Column) or not dot_column.is_type(exp.DataType.Type.STRUCT):
         return []
@@ -676,25 +739,30 @@ def _expand_struct_stars_risingwave(expression: exp.Dot) -> t.List[exp.Alias]:
     starting_struct = dot_column.type
 
     # walk up AST and down into struct definition in sync
+    # AST を上ってから構造体の定義まで同期して進む
     while parent is not None:
         if isinstance(parent, exp.Paren):
             parent = parent.parent
             continue
 
         # if parent is not a dot, then something is wrong
+        # 親がドットでない場合は何かが間違っている
         if not isinstance(parent, exp.Dot):
             return []
 
         # if the rhs of the dot is star we are done
+        # 点の右辺が星印なら完了です
         rhs = parent.right
         if isinstance(rhs, exp.Star):
             break
 
         # if it is not identifier, then something is wrong
+        # 識別子でない場合は何かが間違っている
         if not isinstance(rhs, exp.Identifier):
             return []
 
         # Check if current rhs identifier is in struct
+        # 現在のrhs識別子が構造体内にあるかどうかを確認します
         matched = False
         for struct_field_def in t.cast(exp.DataType, starting_struct).expressions:
             if struct_field_def.name == rhs.name:
@@ -708,9 +776,11 @@ def _expand_struct_stars_risingwave(expression: exp.Dot) -> t.List[exp.Alias]:
         parent = parent.parent
 
     # build new aliases to expand star
+    # スターを拡大するために新しいエイリアスを構築する
     new_selections = []
 
     # fetch the outermost parentheses for new aliaes
+    # 新しいエイリアスの最も外側の括弧を取得します
     outer_paren = expression.this
 
     for struct_field_def in t.cast(exp.DataType, starting_struct).expressions:
@@ -729,7 +799,8 @@ def _expand_stars(
     pseudocolumns: t.Set[str],
     annotator: TypeAnnotator,
 ) -> None:
-    """Expand stars to lists of column selections"""
+    """Expand stars to lists of column selections
+    アスタリスクを列選択リストに展開します"""
 
     new_selections: t.List[exp.Expression] = []
     except_columns: t.Dict[int, t.Set[str]] = {}
@@ -849,6 +920,7 @@ def _expand_stars(
                     )
 
     # Ensures we don't overwrite the initial selections with an empty list
+    # 初期選択を空のリストで上書きしないようにします
     if new_selections and isinstance(scope.expression, exp.Select):
         scope.expression.set("expressions", new_selections)
 
@@ -896,7 +968,8 @@ def _add_replace_columns(
 
 
 def qualify_outputs(scope_or_expression: Scope | exp.Expression) -> None:
-    """Ensure all output columns are aliased"""
+    """Ensure all output columns are aliased
+    すべての出力列に別名が付けられていることを確認する"""
     if isinstance(scope_or_expression, exp.Expression):
         scope = build_scope(scope_or_expression)
         if not isinstance(scope, Scope):
@@ -930,7 +1003,8 @@ def qualify_outputs(scope_or_expression: Scope | exp.Expression) -> None:
 
 
 def quote_identifiers(expression: E, dialect: DialectType = None, identify: bool = True) -> E:
-    """Makes sure all identifiers that need to be quoted are quoted."""
+    """Makes sure all identifiers that need to be quoted are quoted.
+    引用符で囲む必要があるすべての識別子が引用符で囲まれていることを確認します。"""
     return expression.transform(
         Dialect.get_or_raise(dialect).quote_identifier, identify=identify, copy=False
     )  # type: ignore
@@ -939,11 +1013,14 @@ def quote_identifiers(expression: E, dialect: DialectType = None, identify: bool
 def pushdown_cte_alias_columns(scope: Scope) -> None:
     """
     Pushes down the CTE alias columns into the projection,
+    CTEエイリアス列をプロジェクションにプッシュダウンします。
 
     This step is useful in Snowflake where the CTE alias columns can be referenced in the HAVING.
+    このステップは、CTEエイリアス列をHAVINGで参照できるSnowflakeで役立ちます。
 
     Args:
         scope: Scope to find ctes to pushdown aliases.
+            エイリアスをプッシュダウンするための CTE を見つけるスコープ。
     """
     for cte in scope.ctes:
         if cte.alias_column_names and isinstance(cte.this, exp.Select):
@@ -960,8 +1037,10 @@ def pushdown_cte_alias_columns(scope: Scope) -> None:
 class Resolver:
     """
     Helper for resolving columns.
+    列を解決するためのヘルパー。
 
     This is a class so we can lazily load some things and easily share them across functions.
+    これは、いくつかのものを遅延読み込みし、関数間で簡単に共有できるようにするためのクラスです。
     """
 
     def __init__(self, scope: Scope, schema: Schema, infer_schema: bool = True):
@@ -976,11 +1055,14 @@ class Resolver:
     def get_table(self, column: str | exp.Column) -> t.Optional[exp.Identifier]:
         """
         Get the table for a column name.
+        列名のテーブルを取得します。
 
         Args:
             column: The column expression (or column name) to find the table for.
+                テーブルを検索する列式 (または列名)。
         Returns:
             The table name if it can be found/inferred.
+            見つかった/推測できる場合のテーブル名。
         """
         column_name = column if isinstance(column, str) else column.name
 
@@ -990,9 +1072,14 @@ class Resolver:
             # Fall-back case: If we couldn't find the `table_name` from ALL of the sources,
             # attempt to disambiguate the column based on other characteristics e.g if this column is in a join condition,
             # we may be able to disambiguate based on the source order.
+            # フォールバックケース: すべてのソースから `table_name` が見つからない場合は、
+            # 他の特性に基づいて列の曖昧さを解消しようとします。
+            # たとえば、この列が結合条件にある場合は、ソースの順序に基づいて曖昧さを解消できる可能性があります。
             if join_context := self._get_column_join_context(column):
                 # In this case, the return value will be the join that _may_ be able to disambiguate the column
                 # and we can use the source columns available at that join to get the table name
+                # この場合、戻り値は列の曖昧さを解消できる可能性のある結合となり、
+                # その結合で利用可能なソース列を使用してテーブル名を取得できます。
                 table_name = self._get_table_name_from_sources(
                     column_name, self._get_available_source_columns(join_context)
                 )
@@ -1023,7 +1110,8 @@ class Resolver:
 
     @property
     def all_columns(self) -> t.Set[str]:
-        """All available columns of all sources in this scope"""
+        """All available columns of all sources in this scope
+        このスコープ内のすべてのソースの利用可能なすべての列"""
         if self._all_columns is None:
             self._all_columns = {
                 column for columns in self._get_all_source_columns().values() for column in columns
@@ -1035,6 +1123,7 @@ class Resolver:
             return expression.named_selects
         if isinstance(expression, exp.Subquery) and isinstance(expression.this, exp.SetOperation):
             # Different types of SET modifiers can be chained together if they're explicitly grouped by nesting
+            # 異なるタイプのSET修飾子は、ネストによって明示的にグループ化されている場合は連結できます。
             return self.get_source_columns_from_set_op(expression.this)
         if not isinstance(expression, exp.SetOperation):
             raise OptimizeError(f"Unknown set operation: {expression}")
@@ -1042,10 +1131,12 @@ class Resolver:
         set_op = expression
 
         # BigQuery specific set operations modifiers, e.g INNER UNION ALL BY NAME
+        # BigQuery 固有のセット演算修飾子 (例: INNER UNION ALL BY NAME)
         on_column_list = set_op.args.get("on")
 
         if on_column_list:
             # The resulting columns are the columns in the ON clause:
+            # 結果の列は、ON 句の列です。
             # {INNER | LEFT | FULL} UNION ALL BY NAME ON (col1, col2, ...)
             columns = [col.name for col in on_column_list]
         elif set_op.side or set_op.kind:
@@ -1053,10 +1144,12 @@ class Resolver:
             kind = set_op.kind
 
             # Visit the children UNIONs (if any) in a post-order traversal
+            # 子 UNION（存在する場合）を事後順序トラバーサルで訪問します
             left = self.get_source_columns_from_set_op(set_op.left)
             right = self.get_source_columns_from_set_op(set_op.right)
 
             # We use dict.fromkeys to deduplicate keys and maintain insertion order
+            # dict.fromkeys を使用してキーの重複を排除し、挿入順序を維持します。
             if side == "LEFT":
                 columns = left
             elif side == "FULL":
@@ -1069,7 +1162,8 @@ class Resolver:
         return columns
 
     def get_source_columns(self, name: str, only_visible: bool = False) -> t.Sequence[str]:
-        """Resolve the source columns for a given source `name`."""
+        """Resolve the source columns for a given source `name`.
+        指定されたソース `name` のソース列を解決します。"""
         cache_key = (name, only_visible)
         if cache_key not in self._get_source_columns_cache:
             if name not in self.scope.sources:
@@ -1087,6 +1181,9 @@ class Resolver:
                 # in bigquery, unnest structs are automatically scoped as tables, so you can
                 # directly select a struct field in a query.
                 # this handles the case where the unnest is statically defined.
+                # BigQuery では、unnest 構造体は自動的にテーブルとしてスコープされるため、
+                # クエリで構造体フィールドを直接選択できます。
+                # これにより、unnest が静的に定義されているケースが処理されます。
                 if self.schema.dialect == "bigquery":
                     if source.expression.is_type(exp.DataType.Type.STRUCT):
                         for k in source.expression.type.expressions:  # type: ignore
@@ -1115,6 +1212,8 @@ class Resolver:
             if column_aliases:
                 # If the source's columns are aliased, their aliases shadow the corresponding column names.
                 # This can be expensive if there are lots of columns, so only do this if column_aliases exist.
+                # ソースの列に別名が設定されている場合、その別名が対応する列名を覆い隠します。
+                # 列数が多い場合はコストが高くなる可能性があるため、column_aliases が存在する場合にのみ実行してください。
                 columns = [
                     alias or name
                     for (name, alias) in itertools.zip_longest(columns, column_aliases)
@@ -1139,6 +1238,7 @@ class Resolver:
     ) -> t.Optional[str]:
         if not source_columns:
             # If not supplied, get all sources to calculate unambiguous columns
+            # 指定しない場合は、すべてのソースを取得して明確な列を計算します
             if self._unambiguous_columns is None:
                 self._unambiguous_columns = self._get_unambiguous_columns(
                     self._get_all_source_columns()
@@ -1160,6 +1260,8 @@ class Resolver:
         if not joins or args.get("laterals") or args.get("pivots"):
             # Feature gap: We currently don't try to disambiguate columns if other sources
             # (e.g laterals, pivots) exist alongside joins
+            # 機能ギャップ: 現在、結合と一緒に他のソース（ラテラル、ピボットなど）が存在する場合、
+            # 列の曖昧さを解消しようとしません。
             return None
 
         join_ancestor = column.find_ancestor(exp.Join, exp.Select)
@@ -1170,6 +1272,8 @@ class Resolver:
         ):
             # Ensure that the found ancestor is a join that contains an actual source,
             # e.g in Clickhouse `b` is an array expression in `a ARRAY JOIN b`
+            # 見つかった祖先が実際のソースを含む結合であることを確認します。
+            # たとえば、Clickhouseでは `b` は `a ARRAY JOIN b` の配列式です。
             return join_ancestor
 
         return None
@@ -1179,9 +1283,11 @@ class Resolver:
     ) -> t.Dict[str, t.Sequence[str]]:
         """
         Get the source columns that are available at the point where a column is referenced.
+        列が参照されている時点で利用可能なソース列を取得します。
 
         For columns in JOIN conditions, this only includes tables that have been joined
         up to that point. Example:
+        JOIN 条件内の列の場合、これにはその時点までに結合されたテーブルのみが含まれます。例:
 
         ```
         SELECT * FROM t_1 INNER JOIN ... INNER JOIN t_n ON t_1.a = c INNER JOIN t_n+1 ON ...
@@ -1192,11 +1298,14 @@ class Resolver:
                                 ⌄
         The unqualified column `c` is not ambiguous if no other sources up until that
         join i.e t_1, ..., t_n, contain a column named `c`.
+        その結合までの他のソース、つまり t_1、...、t_n に `c` という名前の列が含まれていない場合、
+        修飾されていない列 `c` はあいまいではありません。
 
         """
         args = self.scope.expression.args
 
         # Collect tables in order: FROM clause tables + joined tables up to current join
+        # テーブルを順番に収集します: FROM 句のテーブル + 現在の結合までの結合テーブル
         from_name = args["from_"].alias_or_name
         available_sources = {from_name: self.get_source_columns(from_name)}
 
@@ -1210,12 +1319,15 @@ class Resolver:
     ) -> t.Mapping[str, str]:
         """
         Find all the unambiguous columns in sources.
+        ソース内の明確な列をすべて検索します。
 
         Args:
             source_columns: Mapping of names to source columns.
+                名前とソース列のマッピング。
 
         Returns:
             Mapping of column name to source name.
+            列名とソース名のマッピング。
         """
         if not source_columns:
             return {}
@@ -1226,6 +1338,7 @@ class Resolver:
 
         if len(source_columns_pairs) == 1:
             # Performance optimization - avoid copying first_columns if there is only one table.
+            # パフォーマンスの最適化 - テーブルが 1 つしかない場合は first_columns のコピーを避けます。
             return SingleValuedMapping(first_columns, first_table)
 
         unambiguous_columns = {col: first_table for col in first_columns}

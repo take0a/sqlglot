@@ -20,12 +20,16 @@ def preprocess(
     Creates a new transform by chaining a sequence of transformations and converts the resulting
     expression to SQL, using either the "_sql" method corresponding to the resulting expression,
     or the appropriate `Generator.TRANSFORMS` function (when applicable -- see below).
+    一連の変換を連鎖させることで新しい変換を作成し、結果の式に対応する "_sql" メソッド、または適切な 
+    `Generator.TRANSFORMS` 関数 (該当する場合 - 以下を参照) を使用して、結果の式を SQL に変換します。
 
     Args:
         transforms: sequence of transform functions. These will be called in order.
+            変換関数のシーケンス。これらは順番に呼び出されます。
 
     Returns:
         Function that can be used as a generator transform.
+        ジェネレータ変換として使用できる関数。
     """
 
     def _to_sql(self, expression: exp.Expression) -> str:
@@ -54,6 +58,8 @@ def preprocess(
                 # Ensures we don't enter an infinite loop. This can happen when the original expression
                 # has the same type as the final expression and there's no _sql method available for it,
                 # because then it'd re-enter _to_sql.
+                # 無限ループに陥らないようにします。これは、元の式と最終式が同じ型で、_sqlメソッドが利用できない
+                # 場合に発生する可能性があります。その場合、_to_sqlメソッドが再び実行されるためです。
                 raise ValueError(
                     f"Expression type {expression.__class__.__name__} requires a _sql method in order to be transformed."
                 )
@@ -123,7 +129,8 @@ def unnest_generate_date_array_using_recursive_cte(expression: exp.Expression) -
 
 
 def unnest_generate_series(expression: exp.Expression) -> exp.Expression:
-    """Unnests GENERATE_SERIES or SEQUENCE table references."""
+    """Unnests GENERATE_SERIES or SEQUENCE table references.
+    GENERATE_SERIES または SEQUENCE テーブル参照をネスト解除します。"""
     this = expression.this
     if isinstance(expression, exp.Table) and isinstance(this, exp.GenerateSeries):
         unnest = exp.Unnest(expressions=[this])
@@ -138,14 +145,18 @@ def unnest_generate_series(expression: exp.Expression) -> exp.Expression:
 def eliminate_distinct_on(expression: exp.Expression) -> exp.Expression:
     """
     Convert SELECT DISTINCT ON statements to a subquery with a window function.
+    SELECT DISTINCT ON ステートメントをウィンドウ関数を使用してサブクエリに変換します。
 
     This is useful for dialects that don't support SELECT DISTINCT ON but support window functions.
+    これは、SELECT DISTINCT ON をサポートしていないがウィンドウ関数をサポートしている方言に役立ちます。
 
     Args:
         expression: the expression that will be transformed.
+            変換される式。
 
     Returns:
         The transformed expression.
+        変形された式。
     """
     if (
         isinstance(expression, exp.Select)
@@ -194,8 +205,10 @@ def eliminate_distinct_on(expression: exp.Expression) -> exp.Expression:
 def eliminate_qualify(expression: exp.Expression) -> exp.Expression:
     """
     Convert SELECT statements that contain the QUALIFY clause into subqueries, filtered equivalently.
+    QUALIFY 句を含む SELECT 文を、同等にフィルタリングされたサブクエリに変換します。
 
     The idea behind this transformation can be seen in Snowflake's documentation for QUALIFY:
+    この変換の背後にある考え方は、Snowflake の QUALIFY に関するドキュメントに記載されています。
     https://docs.snowflake.com/en/sql-reference/constructs/qualify
 
     Some dialects don't support window functions in the WHERE clause, so we need to include them as
@@ -204,6 +217,11 @@ def eliminate_qualify(expression: exp.Expression) -> exp.Expression:
     otherwise we won't be able to refer to it in the outer query's WHERE clause. Finally, if a
     newly aliased projection is referenced in the QUALIFY clause, it will be replaced by the
     corresponding expression to avoid creating invalid column references.
+    一部の方言ではWHERE句でウィンドウ関数をサポートしていないため、外部フィルターでエイリアスを使用して
+    ウィンドウ関数を参照するには、サブクエリにウィンドウ関数を射影として含める必要があります。
+    また、QUALIFY句で参照されている列が選択されていない場合は、その列も含める必要があります。
+    そうしないと、外部クエリのWHERE句でその列を参照できなくなります。最後に、新たにエイリアスが付けられた
+    射影がQUALIFY句で参照されている場合、無効な列参照の作成を防ぐため、対応する式に置き換えられます。
     """
     if isinstance(expression, exp.Select) and expression.args.get("qualify"):
         taken = set(expression.named_selects)
@@ -259,6 +277,8 @@ def remove_precision_parameterized_types(expression: exp.Expression) -> exp.Expr
     """
     Some dialects only allow the precision for parameterized types to be defined in the DDL and not in
     other expressions. This transforms removes the precision from parameterized types in expressions.
+    一部の方言では、パラメータ化された型の精度はDDLでのみ定義でき、他の式では定義できません。
+    この変換により、式内のパラメータ化された型から精度が削除されます。
     """
     for node in expression.find_all(exp.DataType):
         node.set(
@@ -269,7 +289,8 @@ def remove_precision_parameterized_types(expression: exp.Expression) -> exp.Expr
 
 
 def unqualify_unnest(expression: exp.Expression) -> exp.Expression:
-    """Remove references to unnest table aliases, added by the optimizer's qualify_columns step."""
+    """Remove references to unnest table aliases, added by the optimizer's qualify_columns step.
+    オプティマイザーの qualified_columns ステップによって追加された、ネスト解除テーブル エイリアスへの参照を削除します。"""
     from sqlglot.optimizer.scope import find_all_in_scope
 
     if isinstance(expression, exp.Select):
@@ -291,7 +312,8 @@ def unnest_to_explode(
     expression: exp.Expression,
     unnest_using_arrays_zip: bool = True,
 ) -> exp.Expression:
-    """Convert cross join unnest into lateral view explode."""
+    """Convert cross join unnest into lateral view explode.
+    cross join を lateral view explode にアンネスト変換します"""
 
     def _unnest_zip_exprs(
         u: exp.Unnest, unnest_exprs: t.List[exp.Expression], has_multi_expr: bool
@@ -352,6 +374,7 @@ def unnest_to_explode(
                     alias = unnest.args.get("alias")
                 exprs = unnest.expressions
                 # The number of unnest.expressions will be changed by _unnest_zip_exprs, we need to record it here
+                # unnest.expressionsの数は_unnest_zip_exprsによって変更されるので、ここで記録する必要があります。
                 has_multi_expr = len(exprs) > 1
                 exprs = _unnest_zip_exprs(unnest, exprs, has_multi_expr)
 
@@ -419,6 +442,7 @@ def explode_projection_to_unnest(
             )
 
             # we use list here because expression.selects is mutated inside the loop
+            # ここでリストを使用するのは、expression.selectsがループ内で変更されるためです。
             for select in list(expression.selects):
                 explode = select.find(exp.Explode)
 
@@ -455,6 +479,7 @@ def explode_projection_to_unnest(
                         )
 
                     # This ensures that we won't use [POS]EXPLODE's argument as a new selection
+                    # これにより、[POS]EXPLODEの引数を新しい選択範囲として使用しないことが保証されます。
                     if isinstance(explode_arg, exp.Column):
                         taken_select_names.add(explode_arg.output_name)
 
@@ -505,6 +530,8 @@ def explode_projection_to_unnest(
 
                     # trino doesn't support left join unnest with on conditions
                     # if it did, this would be much simpler
+                    # trinoは条件付きで左結合のunnestをサポートしていません。
+                    # もしサポートしていたら、もっとシンプルになります。
                     expression.join(
                         exp.alias_(
                             exp.Unnest(
@@ -545,7 +572,8 @@ def explode_projection_to_unnest(
 
 
 def add_within_group_for_percentiles(expression: exp.Expression) -> exp.Expression:
-    """Transforms percentiles by adding a WITHIN GROUP clause to them."""
+    """Transforms percentiles by adding a WITHIN GROUP clause to them.
+    WITHIN GROUP 句を追加してパーセンタイルを変換します。"""
     if (
         isinstance(expression, exp.PERCENTILES)
         and not isinstance(expression.parent, exp.WithinGroup)
@@ -560,7 +588,8 @@ def add_within_group_for_percentiles(expression: exp.Expression) -> exp.Expressi
 
 
 def remove_within_group_for_percentiles(expression: exp.Expression) -> exp.Expression:
-    """Transforms percentiles by getting rid of their corresponding WITHIN GROUP clause."""
+    """Transforms percentiles by getting rid of their corresponding WITHIN GROUP clause.
+    対応する WITHIN GROUP 句を削除してパーセンタイルを変換します。"""
     if (
         isinstance(expression, exp.WithinGroup)
         and isinstance(expression.this, exp.PERCENTILES)
@@ -574,7 +603,8 @@ def remove_within_group_for_percentiles(expression: exp.Expression) -> exp.Expre
 
 
 def add_recursive_cte_column_names(expression: exp.Expression) -> exp.Expression:
-    """Uses projection output names in recursive CTE definitions to define the CTEs' columns."""
+    """Uses projection output names in recursive CTE definitions to define the CTEs' columns.
+    再帰 CTE 定義で投影出力名を使用して、CTE の列を定義します。"""
     if isinstance(expression, exp.With) and expression.recursive:
         next_name = name_sequence("_c_")
 
@@ -593,7 +623,8 @@ def add_recursive_cte_column_names(expression: exp.Expression) -> exp.Expression
 
 
 def epoch_cast_to_ts(expression: exp.Expression) -> exp.Expression:
-    """Replace 'epoch' in casts by the equivalent date literal."""
+    """Replace 'epoch' in casts by the equivalent date literal.
+    キャスト内の 'epoch' を同等の日付リテラルに置き換えます。"""
     if (
         isinstance(expression, (exp.Cast, exp.TryCast))
         and expression.name.lower() == "epoch"
@@ -605,7 +636,8 @@ def epoch_cast_to_ts(expression: exp.Expression) -> exp.Expression:
 
 
 def eliminate_semi_and_anti_joins(expression: exp.Expression) -> exp.Expression:
-    """Convert SEMI and ANTI joins into equivalent forms that use EXIST instead."""
+    """Convert SEMI and ANTI joins into equivalent forms that use EXIST instead.
+    SEMI 結合と ANTI 結合を、代わりに EXIST を使用する同等の形式に変換します。"""
     if isinstance(expression, exp.Select):
         for join in expression.args.get("joins") or []:
             on = join.args.get("on")
@@ -626,6 +658,8 @@ def eliminate_full_outer_join(expression: exp.Expression) -> exp.Expression:
     Converts a query with a FULL OUTER join to a union of identical queries that
     use LEFT/RIGHT OUTER joins instead. This transformation currently only works
     for queries that have a single FULL OUTER join.
+    FULL OUTER結合を含むクエリを、LEFT/RIGHT OUTER結合を使用する同一クエリの結合に変換します。
+    この変換は現在、単一のFULL OUTER結合を含むクエリに対してのみ機能します。
     """
     if isinstance(expression, exp.Select):
         full_outer_joins = [
@@ -665,13 +699,18 @@ def move_ctes_to_top_level(expression: E) -> E:
     """
     Some dialects (e.g. Hive, T-SQL, Spark prior to version 3) only allow CTEs to be
     defined at the top-level, so for example queries like:
+    一部の方言 (例: Hive、T-SQL、バージョン 3 より前の Spark) では、CTE を最上位レベルでのみ定義できます。
+    たとえば、次のようなクエリになります。
 
         SELECT * FROM (WITH t(c) AS (SELECT 1) SELECT * FROM t) AS subq
 
     are invalid in those dialects. This transformation can be used to ensure all CTEs are
     moved to the top level so that the final SQL code is valid from a syntax standpoint.
+    はこれらの方言では無効です。
+    この変換により、すべてのCTEが最上位レベルに移動され、最終的なSQLコードが構文の観点から有効になります。
 
     TODO: handle name clashes whilst moving CTEs (it can get quite tricky & costly).
+    CTE を移動する際にハンドル名の衝突が発生します (非常に扱いにくくなり、コストもかかる場合があります)。
     """
     top_level_with = expression.args.get("with_")
     for inner_with in expression.find_all(exp.With):
@@ -701,7 +740,8 @@ def move_ctes_to_top_level(expression: E) -> E:
 
 
 def ensure_bools(expression: exp.Expression) -> exp.Expression:
-    """Converts numeric values used in conditions into explicit boolean expressions."""
+    """Converts numeric values used in conditions into explicit boolean expressions.
+    条件で使用される数値を明示的なブール式に変換します。"""
     from sqlglot.optimizer.canonicalize import ensure_bools
 
     def _ensure_bool(node: exp.Expression) -> None:
@@ -724,6 +764,7 @@ def ensure_bools(expression: exp.Expression) -> exp.Expression:
 def unqualify_columns(expression: exp.Expression) -> exp.Expression:
     for column in expression.find_all(exp.Column):
         # We only wanna pop off the table, db, catalog args
+        # テーブル、データベース、カタログ引数をポップしたいだけです
         for part in column.parts[:-1]:
             part.pop()
 
@@ -751,6 +792,7 @@ def ctas_with_tmp_tables_to_create_tmp_view(
     )
 
     # CTAS with temp tables map to CREATE TEMPORARY VIEW
+    # 一時テーブルを含む CTAS は CREATE TEMPORARY VIEW にマップされます
     if expression.kind == "TABLE" and temporary:
         if expression.expression:
             return exp.Create(
@@ -768,6 +810,9 @@ def move_schema_columns_to_partitioned_by(expression: exp.Expression) -> exp.Exp
     In Hive, the PARTITIONED BY property acts as an extension of a table's schema. When the
     PARTITIONED BY value is an array of column names, they are transformed into a schema.
     The corresponding columns are removed from the create statement.
+    Hiveでは、PARTITIONED BYプロパティはテーブルスキーマの拡張として機能します。
+    PARTITIONED BY値が列名の配列である場合、それらはスキーマに変換されます。
+    対応する列はcreateステートメントから削除されます。
     """
     assert isinstance(expression, exp.Create)
     has_schema = isinstance(expression.this, exp.Schema)
@@ -789,8 +834,10 @@ def move_schema_columns_to_partitioned_by(expression: exp.Expression) -> exp.Exp
 def move_partitioned_by_to_schema_columns(expression: exp.Expression) -> exp.Expression:
     """
     Spark 3 supports both "HIVEFORMAT" and "DATASOURCE" formats for CREATE TABLE.
+    Spark 3 は、CREATE TABLE の「HIVEFORMAT」と「DATASOURCE」の両方の形式をサポートしています。
 
     Currently, SQLGlot uses the DATASOURCE format for Spark 3.
+    現在、SQLGlot は Spark 3 に DATASOURCE 形式を使用しています。
     """
     assert isinstance(expression, exp.Create)
     prop = expression.find(exp.PartitionedByProperty)
@@ -812,7 +859,8 @@ def move_partitioned_by_to_schema_columns(expression: exp.Expression) -> exp.Exp
 
 
 def struct_kv_to_alias(expression: exp.Expression) -> exp.Expression:
-    """Converts struct arguments to aliases, e.g. STRUCT(1 AS y)."""
+    """Converts struct arguments to aliases, e.g. STRUCT(1 AS y).
+    構造体の引数をエイリアスに変換します。例: STRUCT(1 AS y)。"""
     if isinstance(expression, exp.Struct):
         expression.set(
             "expressions",
@@ -829,20 +877,28 @@ def eliminate_join_marks(expression: exp.Expression) -> exp.Expression:
     """https://docs.oracle.com/cd/B19306_01/server.102/b14200/queries006.htm#sthref3178
 
     1. You cannot specify the (+) operator in a query block that also contains FROM clause join syntax.
+    1. FROM 句の結合構文を含むクエリブロックでは、(+) 演算子を指定できません。
 
     2. The (+) operator can appear only in the WHERE clause or, in the context of left-correlation (that is, when specifying the TABLE clause) in the FROM clause, and can be applied only to a column of a table or view.
+    2. (+) 演算子は、WHERE 句内、または FROM 句の左相関コンテキスト（つまり、TABLE 句を指定する場合）内でのみ使用でき、テーブルまたはビューの列にのみ適用できます。
 
     The (+) operator does not produce an outer join if you specify one table in the outer query and the other table in an inner query.
+    外部クエ​​リで 1 つのテーブルを指定し、内部クエリで別のテーブルを指定した場合、(+) 演算子は外部結合を生成しません。
 
     You cannot use the (+) operator to outer-join a table to itself, although self joins are valid.
+    自己結合は有効ですが、(+) 演算子を使用してテーブルを自身に外部結合することはできません。
 
     The (+) operator can be applied only to a column, not to an arbitrary expression. However, an arbitrary expression can contain one or more columns marked with the (+) operator.
+    (+) 演算子は列にのみ適用でき、任意の式には適用できません。ただし、任意の式には、(+) 演算子でマークされた 1 つ以上の列を含めることができます。
 
     A WHERE condition containing the (+) operator cannot be combined with another condition using the OR logical operator.
+    (+) 演算子を含む WHERE 条件は、OR 論理演算子を使用して他の条件と組み合わせることはできません。
 
     A WHERE condition cannot use the IN comparison condition to compare a column marked with the (+) operator with an expression.
+    WHERE 条件では、IN 比較条件を使用して、(+) 演算子でマークされた列と式を比較することはできません。
 
     A WHERE condition cannot compare any column marked with the (+) operator with a subquery.
+    WHERE 条件では、(+) 演算子でマークされた列をサブクエリと比較することはできません。
 
     -- example with WHERE
     SELECT d.department_name, sum(e.salary) as total_salary
@@ -871,6 +927,7 @@ def eliminate_join_marks(expression: exp.Expression) -> exp.Expression:
     from collections import defaultdict
 
     # we go in reverse to check the main query for left correlation
+    # 左相関のメインクエリを逆にチェックします
     for scope in reversed(traverse_scope(expression)):
         query = scope.expression
 
@@ -878,13 +935,16 @@ def eliminate_join_marks(expression: exp.Expression) -> exp.Expression:
         joins = query.args.get("joins", [])
 
         # knockout: we do not support left correlation (see point 2)
+        # ノックアウト: 左相関はサポートしていません（ポイント2を参照）
         assert not scope.is_correlated_subquery, "Correlated queries are not supported"
 
         # nothing to do - we check it here after knockout above
+        # 何もする必要はありません - 上記のノックアウト後にここで確認します
         if not where or not any(c.args.get("join_mark") for c in where.find_all(exp.Column)):
             continue
 
         # make sure we have AND of ORs to have clear join terms
+        # 明確な結合条件を持つようにANDまたはORを使用する
         where = normalize(where.this)
         assert normalized(where), "Cannot normalize JOIN predicates"
 
@@ -949,6 +1009,7 @@ def eliminate_join_marks(expression: exp.Expression) -> exp.Expression:
 def any_to_exists(expression: exp.Expression) -> exp.Expression:
     """
     Transform ANY operator to Spark's EXISTS
+    ANY演算子をSparkのEXISTSに変換する
 
     For example,
         - Postgres: SELECT * FROM tbl WHERE 5 > ANY(tbl.col)
@@ -956,6 +1017,7 @@ def any_to_exists(expression: exp.Expression) -> exp.Expression:
 
     Both ANY and EXISTS accept queries but currently only array expressions are supported for this
     transformation
+    ANYとEXISTSはどちらもクエリを受け入れますが、現在この変換では配列式のみがサポートされています。
     """
     if isinstance(expression, exp.Select):
         for any_expr in expression.find_all(exp.Any):
@@ -974,7 +1036,8 @@ def any_to_exists(expression: exp.Expression) -> exp.Expression:
 
 
 def eliminate_window_clause(expression: exp.Expression) -> exp.Expression:
-    """Eliminates the `WINDOW` query clause by inling each named window."""
+    """Eliminates the `WINDOW` query clause by inling each named window.
+    名前付きウィンドウをそれぞれインライン化することで、`WINDOW` クエリ句を削除します。"""
     if isinstance(expression, exp.Select) and expression.args.get("windows"):
         from sqlglot.optimizer.scope import find_all_in_scope
 
@@ -1007,8 +1070,10 @@ def eliminate_window_clause(expression: exp.Expression) -> exp.Expression:
 def inherit_struct_field_names(expression: exp.Expression) -> exp.Expression:
     """
     Inherit field names from the first struct in an array.
+    配列の最初の構造体からフィールド名を継承します。
 
     BigQuery supports implicitly inheriting names from the first STRUCT in an array:
+    BigQuery は、配列の最初の STRUCT から名前を暗黙的に継承することをサポートしています。
 
     Example:
         ARRAY[
@@ -1019,12 +1084,16 @@ def inherit_struct_field_names(expression: exp.Expression) -> exp.Expression:
 
     This transformation makes the field names explicit on all structs by adding
     PropertyEQ nodes, in order to facilitate transpilation to other dialects.
+    この変換により、PropertyEQ ノードを追加することですべての構造体のフィールド名が
+    明示的になり、他の方言へのトランスパイルが容易になります。
 
     Args:
         expression: The expression tree to transform
+            変換する式ツリー
 
     Returns:
         The modified expression with field names inherited in all structs
+        すべての構造体でフィールド名が継承されている変更された式
     """
     if (
         isinstance(expression, exp.Array)
@@ -1035,11 +1104,13 @@ def inherit_struct_field_names(expression: exp.Expression) -> exp.Expression:
         field_names = [fld.this for fld in first_item.expressions]
 
         # Apply field names to subsequent structs that don't have them
+        # フィールド名を持たない後続の構造体にフィールド名を適用する
         for struct in expression.expressions[1:]:
             if not isinstance(struct, exp.Struct) or len(struct.expressions) != len(field_names):
                 continue
 
             # Convert unnamed expressions to PropertyEQ with inherited names
+            # 名前のない式を継承された名前を持つ PropertyEQ に変換する
             new_expressions = []
             for i, expr in enumerate(struct.expressions):
                 if not isinstance(expr, exp.PropertyEQ):

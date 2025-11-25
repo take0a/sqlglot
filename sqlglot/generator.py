@@ -3235,6 +3235,8 @@ class Generator(metaclass=_Generator):
             # Dialect's CONCAT function coalesces NULLs to empty strings, but the expression does not.
             # Transpile to double pipe operators, which typically returns NULL if any args are NULL
             # instead of coalescing them to empty string.
+            # DialectのCONCAT関数はNULLを空文字列に結合しますが、式は結合しません。二重パイプ演算子に
+            # トランスパイルすると、引数のいずれかがNULLの場合、通常は空文字列に結合せずにNULLを返します。
             from sqlglot.dialects.dialect import concat_to_dpipe_sql
 
             return concat_to_dpipe_sql(self, expression)
@@ -3242,6 +3244,7 @@ class Generator(metaclass=_Generator):
         expressions = self.convert_concat_args(expression)
 
         # Some dialects don't allow a single-argument CONCAT call
+        # 一部の方言では、単一引数のCONCAT呼び出しは許可されません。
         if not self.SUPPORTS_SINGLE_ARG_CONCAT and len(expressions) == 1:
             return self.sql(expressions[0])
 

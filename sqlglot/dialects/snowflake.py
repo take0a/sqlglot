@@ -43,10 +43,12 @@ if t.TYPE_CHECKING:
 
 def _build_strtok(args: t.List) -> exp.SplitPart:
     # Add default delimiter (space) if missing - per Snowflake docs
+    # 欠落している場合はデフォルトの区切り文字（スペース）を追加します（Snowflakeのドキュメントによる）
     if len(args) == 1:
         args.append(exp.Literal.string(" "))
 
     # Add default part_index (1) if missing
+    # 欠落している場合はデフォルトのpart_index（1）を追加します
     if len(args) == 2:
         args.append(exp.Literal.number(1))
 
@@ -65,6 +67,7 @@ def _build_datetime(
 
         if isinstance(value, exp.Literal) or (value and scale_or_fmt):
             # Converts calls like `TO_TIME('01:02:03')` into casts
+            # `TO_TIME('01:02:03')`のような呼び出しをキャストに変換します
             if len(args) == 1 and value.is_string and not int_value:
                 return (
                     exp.TryCast(this=value, to=exp.DataType.build(kind), requires_string=True)
@@ -74,10 +77,13 @@ def _build_datetime(
 
             # Handles `TO_TIMESTAMP(str, fmt)` and `TO_TIMESTAMP(num, scale)` as special
             # cases so we can transpile them, since they're relatively common
+            # `TO_TIMESTAMP(str, fmt)` と `TO_TIMESTAMP(num, scale)` は比較的一般的なので、
+            # 特別なケースとして扱い、トランスパイルできるようにします。
             if kind == exp.DataType.Type.TIMESTAMP:
                 if not safe and (int_value or int_scale_or_fmt):
                     # TRY_TO_TIMESTAMP('integer') is not parsed into exp.UnixToTime as
                     # it's not easily transpilable
+                    # TRY_TO_TIMESTAMP('integer') は簡単に変換できないため、exp.UnixToTime に解析されません。
                     return exp.UnixToTime(this=value, scale=scale_or_fmt)
                 if not int_scale_or_fmt and not is_float(value.name):
                     expr = build_formatted_time(exp.StrToTime, "snowflake")(args)
@@ -154,6 +160,7 @@ def _build_if_from_div0null(args: t.List) -> exp.If:
     rhs = exp._wrap(seq_get(args, 1), exp.Binary)
 
     # Returns 0 when divisor is 0 OR NULL
+    # 除数が0またはNULLの場合は0を返します
     cond = exp.EQ(this=rhs, expression=exp.Literal.number(0)).or_(
         exp.Is(this=rhs, expression=exp.null())
     )
@@ -220,6 +227,8 @@ def _unqualify_pivot_columns(expression: exp.Expression) -> exp.Expression:
     """
     Snowflake doesn't allow columns referenced in UNPIVOT to be qualified,
     so we need to unqualify them. Same goes for ANY ORDER BY <column>.
+    Snowflakeでは、UNPIVOTで参照される列を修飾できないため、修飾を解除する必要があります。
+    ANY ORDER BY <column>でも同様です。
 
     Example:
         >>> from sqlglot import parse_one
@@ -279,11 +288,13 @@ def _unnest_generate_date_array(unnest: exp.Unnest) -> None:
         sequence_value_name = "value"
 
     # We'll add the next sequence value to the starting date and project the result
+    # 次のシーケンス値を開始日に追加し、結果を投影します
     date_add = _build_date_time_add(exp.DateAdd)(
         [unit, exp.cast(sequence_value_name, "int"), exp.cast(start, "date")]
     )
 
     # We use DATEDIFF to compute the number of sequence values needed
+    # DATEDIFFを使用して必要なシーケンス値の数を計算します
     number_sequence = Snowflake.Parser.FUNCTIONS["ARRAY_GENERATE_RANGE"](
         [exp.Literal.number(0), _build_datediff([unit, start, end]) + 1]
     )
@@ -327,6 +338,8 @@ def _transform_generate_date_array(expression: exp.Expression) -> exp.Expression
 
             # If GENERATE_DATE_ARRAY is used directly as an array (e.g passed into ARRAY_LENGTH), the transformed Snowflake
             # query is the following (it'll be unnested properly on the next iteration due to copy):
+            # GENERATE_DATE_ARRAY が配列として直接使用される場合 (たとえば、ARRAY_LENGTH に渡される場合)、
+            # 変換された Snowflake クエリは次のようになります (コピーにより次の反復で適切にネスト解除されます)。
             # SELECT ref(GENERATE_DATE_ARRAY(...)) -> SELECT ref((SELECT ARRAY_AGG(*) FROM UNNEST(GENERATE_DATE_ARRAY(...))))
             if not isinstance(parent, exp.Unnest):
                 unnest = exp.Unnest(expressions=[generate_date_array.copy()])
@@ -361,10 +374,14 @@ def _build_regexp_extract(expr_type: t.Type[E]) -> t.Callable[[t.List], E]:
 def _regexpextract_sql(self, expression: exp.RegexpExtract | exp.RegexpExtractAll) -> str:
     # Other dialects don't support all of the following parameters, so we need to
     # generate default values as necessary to ensure the transpilation is correct
+    # 他の方言では以下のパラメータのすべてがサポートされていないため、
+    # トランスパイルが正しいことを確認するために必要に応じてデフォルト値を生成する必要があります。
     group = expression.args.get("group")
 
     # To avoid generating all these default values, we set group to None if
     # it's 0 (also default value) which doesn't trigger the following chain
+    # これらのデフォルト値の生成を避けるために、グループが0（これもデフォルト値）の場合は
+    # Noneに設定し、次のチェーンをトリガーしません。
     if group and group.name == "0":
         group = None
 
@@ -423,6 +440,8 @@ def _qualify_unnested_columns(expression: exp.Expression) -> exp.Expression:
 
             # Try to infer column names produced by an unnest operator. This is only possible
             # when we can peek into the (statically known) contents of the unnested value.
+            # ネスト解除演算子によって生成された列名を推測してみてください。
+            # これは、ネスト解除された値の（静的に既知の）内容を確認できる場合にのみ可能です。
             unnest_columns: t.Set[str] = set()
             for unnest_expr in unnest.expressions:
                 if not isinstance(unnest_expr, exp.Array):
@@ -454,6 +473,8 @@ def _qualify_unnested_columns(expression: exp.Expression) -> exp.Expression:
 
                 # Produce a `TableAlias` AST similar to what is produced for BigQuery. This
                 # will be corrected later, when we generate SQL for the `Unnest` AST node.
+                # BigQuery で生成されるものと同様の `TableAlias` AST を生成します。
+                # これは、後で `Unnest` AST ノードの SQL を生成するときに修正されます。
                 aliased_unnest = exp.alias_(unnest, None, table=[alias_name])
                 scope.replace(unnest, aliased_unnest)
 
@@ -500,9 +521,13 @@ def _eliminate_dot_variant_lookup(expression: exp.Expression) -> exp.Expression:
         # This transformation is used to facilitate transpilation of BigQuery `UNNEST` operations
         # to Snowflake. It should not affect roundtrip because `Unnest` nodes cannot be produced
         # by Snowflake's parser.
+        # この変換は、BigQuery の `UNNEST` 操作を Snowflake にトランスパイルするために使用されます。
+        # Snowflake のパーサーでは `Unnest` ノードを生成できないため、この変換はラウンドトリップには影響しません。
         #
         # Additionally, at the time of writing this, BigQuery is the only dialect that produces a
         # `TableAlias` node that only fills `columns` and not `this`, due to `UNNEST_COLUMN_ONLY`.
+        # さらに、これを執筆している時点では、`UNNEST_COLUMN_ONLY` により、`columns` のみを入力し、
+        # `this` を入力しない `TableAlias` ノードを生成する方言は BigQuery のみです。
         unnest_aliases = set()
         for unnest in find_all_in_scope(expression, exp.Unnest):
             unnest_alias = unnest.args.get("alias")
@@ -593,6 +618,9 @@ class Snowflake(Dialect):
     def quote_identifier(self, expression: E, identify: bool = True) -> E:
         # This disables quoting DUAL in SELECT ... FROM DUAL, because Snowflake treats an
         # unquoted DUAL keyword in a special way and does not map it to a user-defined table
+        # これにより、SELECT ... FROM DUAL で DUAL を引用符で囲むことが無効になります。
+        # これは、Snowflake が引用符で囲まれていない DUAL キーワードを特別な方法で処理し、
+        # ユーザー定義のテーブルにマッピングしないためです。
         if (
             isinstance(expression, exp.Identifier)
             and isinstance(expression.parent, exp.Table)
@@ -632,6 +660,7 @@ class Snowflake(Dialect):
             ),
             "ARRAY_GENERATE_RANGE": lambda args: exp.GenerateSeries(
                 # ARRAY_GENERATE_RANGE has an exlusive end; we normalize it to be inclusive
+                # ARRAY_GENERATE_RANGEには排他的な終了点があり、それを包含するように正規化します。
                 start=seq_get(args, 0),
                 end=exp.Sub(this=seq_get(args, 1), expression=exp.Literal.number(1)),
                 step=seq_get(args, 2),
@@ -892,6 +921,9 @@ class Snowflake(Dialect):
                 # Snowflake treats `value NOT IN (subquery)` as `VALUE <> ALL (subquery)`, so
                 # we do this conversion here to avoid parsing it into `NOT value IN (subquery)`
                 # which can produce different results (most likely a SnowFlake bug).
+                # Snowflake は `value NOT IN (subquery)` を `VALUE <> ALL (subquery)` として扱うため、
+                # ここでこの変換を実行して、異なる結果 (おそらく SnowFlake のバグ) が生成される可能性のある 
+                # `NOT value IN (subquery)` に解析されることを回避します。
                 #
                 # https://docs.snowflake.com/en/sql-reference/functions/in
                 # Context: https://github.com/tobymao/sqlglot/issues/3890
@@ -953,6 +985,7 @@ class Snowflake(Dialect):
                 return None
 
             # Handle both syntaxes: DATE_PART(part, expr) and DATE_PART(part FROM expr)
+            # 両方の構文を処理します: DATE_PART(part, expr) と DATE_PART(part FROM expr)
             expression = (
                 self._match_set((TokenType.FROM, TokenType.COMMA)) and self._parse_bitwise()
             )
@@ -1087,6 +1120,8 @@ class Snowflake(Dialect):
 
             # will identity SHOW TERSE SCHEMAS but not SHOW TERSE PRIMARY KEYS
             # which is syntactically valid but has no effect on the output
+            # SHOW TERSE SCHEMAS は識別されますが、構文的には有効ですが出力には
+            # 影響しない SHOW TERSE PRIMARY KEYS は識別されません。
             terse = self._tokens[self._index - 2].text.upper() == "TERSE"
 
             history = self._match_text_seq("HISTORY")
@@ -1142,6 +1177,7 @@ class Snowflake(Dialect):
             start = self._prev
 
             # If we detect GET( then we need to parse a function, not a statement
+            # GET( を検出した場合は、文ではなく関数を解析する必要があります。
             if self._match(TokenType.L_PAREN):
                 self._retreat(self._index - 2)
                 return self._parse_expression()
@@ -1149,6 +1185,7 @@ class Snowflake(Dialect):
             target = self._parse_location_path()
 
             # Parse as command if unquoted file path
+            # 引用符で囲まれていないファイルパスの場合はコマンドとして解析します
             if self._curr.token_type == TokenType.URI_START:
                 return self._parse_as_command(start)
 
@@ -1165,6 +1202,7 @@ class Snowflake(Dialect):
 
         def _parse_file_location(self) -> t.Optional[exp.Expression]:
             # Parse either a subquery or a staged file
+            # サブクエリまたはステージングされたファイルのいずれかを解析する
             return (
                 self._parse_select(table=True, parse_subquery_alias=False)
                 if self._match(TokenType.L_PAREN, advance=False)
@@ -1178,6 +1216,8 @@ class Snowflake(Dialect):
             # We avoid consuming a comma token because external tables like @foo and @bar
             # can be joined in a query with a comma separator, as well as closing paren
             # in case of subqueries
+            # @fooや@barのような外部テーブルは、コンマ区切りでクエリ内で結合でき、
+            # サブクエリの場合は閉じ括弧も使用できるため、コンマトークンの使用を避けます。
             while self._is_connected() and not self._match_set(
                 (TokenType.COMMA, TokenType.L_PAREN, TokenType.R_PAREN), advance=False
             ):
@@ -1200,10 +1240,12 @@ class Snowflake(Dialect):
 
         def _parse_foreign_key(self) -> exp.ForeignKey:
             # inlineFK, the REFERENCES columns are implied
+            # inlineFKでは、REFERENCES列が暗黙的に指定されます
             if self._match(TokenType.REFERENCES, advance=False):
                 return self.expression(exp.ForeignKey)
 
             # outoflineFK, explicitly names the columns
+            # outoflineFK、列に明示的に名前を付ける
             return super()._parse_foreign_key()
 
         def _parse_file_format_property(self) -> exp.FileFormatProperty:
@@ -1525,6 +1567,7 @@ class Snowflake(Dialect):
             if expressions and expression.is_type(*exp.DataType.STRUCT_TYPES):
                 for field_type in expressions:
                     # The correct syntax is OBJECT [ (<key> <value_type [NOT NULL] [, ...]) ]
+                    # 正しい構文は OBJECT [ (<key> <value_type [NOT NULL] [, ...]) ] です。
                     if isinstance(field_type, exp.DataType):
                         return "OBJECT"
                     if (
@@ -1535,6 +1578,9 @@ class Snowflake(Dialect):
                         # Doing OBJECT('foo' VARCHAR) is invalid snowflake Syntax. Moreover, besides
                         # converting 'foo' into an identifier, we also need to quote it because these
                         # keys are case-sensitive. For example:
+                        # OBJECT('foo' VARCHAR) は無効なスノーフレーク構文です。さらに、'foo' を
+                        # 識別子に変換するだけでなく、これらのキーは大文字と小文字を区別するため、
+                        # 引用符で囲む必要があります。例えば、次のようになります。
                         #
                         # WITH t AS (SELECT OBJECT_CONSTRUCT('x', 'y') AS c) SELECT c:x FROM t -- correct
                         # WITH t AS (SELECT OBJECT_CONSTRUCT('x', 'y') AS c) SELECT c:X FROM t -- incorrect, returns NULL
@@ -1578,6 +1624,9 @@ class Snowflake(Dialect):
             # Snowflake requires that TRY_CAST's value be a string
             # If TRY_CAST is being roundtripped (since Snowflake is the only dialect that sets "requires_string") or
             # if we can deduce that the value is a string, then we can generate TRY_CAST
+            # Snowflakeでは、TRY_CASTの値は文字列である必要があります。
+            # TRY_CASTがラウンドトリップされている場合（Snowflakeは「requires_string」を設定する唯一の方言であるため）、
+            # または値が文字列であると推測できる場合は、TRY_CASTを生成できます。
             if expression.args.get("requires_string") or value.is_type(*exp.DataType.TEXT_TYPES):
                 return super().trycast_sql(expression)
 
@@ -1661,6 +1710,7 @@ class Snowflake(Dialect):
 
         def describe_sql(self, expression: exp.Describe) -> str:
             # Default to table if kind is unknown
+            # 種類が不明な場合はテーブルをデフォルトとする
             kind_value = expression.args.get("kind") or "TABLE"
             kind = f" {kind_value}" if kind_value else ""
             this = f" {self.sql(expression, 'this')}"
@@ -1745,6 +1795,8 @@ class Snowflake(Dialect):
 
             # JSON strings are valid coming from other dialects such as BQ so
             # for these cases we PARSE_JSON preemptively
+            # JSON文字列はBQなどの他の方言から来たものでも有効であるため、
+            # このような場合には事前にPARSE_JSONを使用します。
             if not isinstance(this, (exp.ParseJSON, exp.JSONExtract)) and not expression.args.get(
                 "requires_json"
             ):
@@ -1787,6 +1839,10 @@ class Snowflake(Dialect):
                 # For materialized views, COPY GRANTS is located *before* the columns list
                 # This is in contrast to normal views where COPY GRANTS is located *after* the columns list
                 # We default CopyGrantsProperty to POST_SCHEMA which means we need to output it POST_NAME if a materialized view is detected
+                # マテリアライズド・ビューの場合、COPY GRANTS は列リストの *前* に配置されます。
+                # これは、COPY GRANTS が列リストの *後* に配置される通常のビューとは対照的です。
+                # CopyGrantsProperty のデフォルトは POST_SCHEMA です。つまり、マテリアライズド・ビューが
+                # 検出された場合は、POST_NAME で出力する必要があります。
                 # ref: https://docs.snowflake.com/en/sql-reference/sql/create-materialized-view#syntax
                 # ref: https://docs.snowflake.com/en/sql-reference/sql/create-view#syntax
                 post_schema_properties = locations[exp.Properties.Location.POST_SCHEMA]
@@ -1806,6 +1862,8 @@ class Snowflake(Dialect):
 
             # If an ORDER BY clause is present, we need to remove it from ARRAY_AGG
             # and add it later as part of the WITHIN GROUP clause
+            # ORDER BY句が存在する場合は、ARRAY_AGGからそれを削除し、
+            # 後でWITHIN GROUP句の一部として追加する必要があります。
             order = this if isinstance(this, exp.Order) else None
             if order:
                 expression.set("this", order.this.pop())
@@ -1864,6 +1922,7 @@ class Snowflake(Dialect):
 
             if not isinstance(this, exp.Dot) and this.is_type(exp.DataType.Type.STRUCT):
                 # Generate colon notation for the top level STRUCT
+                # トップレベルのSTRUCTにコロン表記を生成する
                 return f"{self.sql(this)}:{self.sql(expression, 'expression')}"
 
             return super().dot_sql(expression)
@@ -1879,6 +1938,7 @@ class Snowflake(Dialect):
 
         def splitpart_sql(self, expression: exp.SplitPart) -> str:
             # Set part_index to 1 if missing
+            # 欠落している場合はpart_indexを1に設定する
             if not expression.args.get("delimiter"):
                 expression.set("delimiter", exp.Literal.string(" "))
 

@@ -21,21 +21,24 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Insert:
-    """Indicates that a new node has been inserted"""
+    """Indicates that a new node has been inserted
+    新しいノードが挿入されたことを示します"""
 
     expression: exp.Expression
 
 
 @dataclass(frozen=True)
 class Remove:
-    """Indicates that an existing node has been removed"""
+    """Indicates that an existing node has been removed
+    既存のノードが削除されたことを示します"""
 
     expression: exp.Expression
 
 
 @dataclass(frozen=True)
 class Move:
-    """Indicates that an existing node's position within the tree has changed"""
+    """Indicates that an existing node's position within the tree has changed
+    ツリー内の既存のノードの位置が変更されたことを示します"""
 
     source: exp.Expression
     target: exp.Expression
@@ -43,7 +46,8 @@ class Move:
 
 @dataclass(frozen=True)
 class Update:
-    """Indicates that an existing node has been updated"""
+    """Indicates that an existing node has been updated
+    既存のノードが更新されたことを示します"""
 
     source: exp.Expression
     target: exp.Expression
@@ -51,7 +55,8 @@ class Update:
 
 @dataclass(frozen=True)
 class Keep:
-    """Indicates that an existing node hasn't been changed"""
+    """Indicates that an existing node hasn't been changed
+    既存のノードが変更されていないことを示します"""
 
     source: exp.Expression
     target: exp.Expression
@@ -72,6 +77,7 @@ def diff(
 ) -> t.List[Edit]:
     """
     Returns the list of changes between the source and the target expressions.
+    ソース式とターゲット式間の変更のリストを返します。
 
     Examples:
         >>> diff(parse_one("a + b"), parse_one("a + c"))
@@ -91,17 +97,26 @@ def diff(
     Args:
         source: the source expression.
         target: the target expression against which the diff should be calculated.
+            差分を計算する対象となるターゲット式。
         matchings: the list of pre-matched node pairs which is used to help the algorithm's
             heuristics produce better results for subtrees that are known by a caller to be matching.
             Note: expression references in this list must refer to the same node objects that are
             referenced in the source / target trees.
+            呼び出し元が一致していると認識しているサブツリーに対して、アルゴリズムのヒューリスティックがより
+            良い結果を生成するのに役立つ、事前に一致したノードペアのリスト。
+            注: このリスト内の式参照は、ソース/ターゲットツリーで参照されているのと同じノードオブジェクトを
+            参照する必要があります。
         delta_only: excludes all `Keep` nodes from the diff.
+            すべての `Keep` ノードを diff から除外します。
         kwargs: additional arguments to pass to the ChangeDistiller instance.
+            ChangeDistiller インスタンスに渡す追加の引数。
 
     Returns:
         the list of Insert, Remove, Move, Update and Keep objects for each node in the source and the
         target expression trees. This list represents a sequence of steps needed to transform the source
         expression tree into the target one.
+        ソース式ツリーとターゲット式ツリーの各ノードに対する挿入、削除、移動、更新、および保持オブジェクトのリスト。
+        このリストは、ソース式ツリーをターゲット式ツリーに変換するために必要な一連の手順を表します。
     """
     matchings = matchings or []
 
@@ -117,6 +132,8 @@ def diff(
 
     # if the source and target have any shared objects, that means there's an issue with the ast
     # the algorithm won't work because the parent / hierarchies will be inaccurate
+    # ソースとターゲットに共有オブジェクトがある場合、親/階層が不正確になるため、
+    # アルゴリズムが機能しないという問題があることを意味します。
     source_nodes = tuple(source.walk())
     target_nodes = tuple(target.walk())
     source_ids = {id(n) for n in source_nodes}
@@ -134,6 +151,8 @@ def diff(
     try:
         # We cache the hash of each new node here to speed up equality comparisons. If the input
         # trees aren't copied, these hashes will be evicted before returning the edit script.
+        # 等価性の比較を高速化するため、各新規ノードのハッシュをここにキャッシュします。
+        # 入力ツリーがコピーされていない場合、編集スクリプトを返す前にこれらのハッシュは削除されます。
         if copy and matchings:
             source_mapping = compute_node_mappings(source_nodes, tuple(source_copy.walk()))
             target_mapping = compute_node_mappings(target_nodes, tuple(target_copy.walk()))
@@ -157,6 +176,7 @@ def diff(
 
 
 # The expression types for which Update edits are allowed.
+# 更新編集が許可される式の種類。
 UPDATABLE_EXPRESSION_TYPES = (
     exp.Alias,
     exp.Boolean,
@@ -176,6 +196,9 @@ class ChangeDistiller:
     The implementation of the Change Distiller algorithm described by Beat Fluri and Martin Pinzger in
     their paper https://ieeexplore.ieee.org/document/4339230, which in turn is based on the algorithm by
     Chawathe et al. described in http://ilpubs.stanford.edu:8090/115/1/1995-46.pdf.
+    Beat Fluri と Martin Pinzger が論文 https://ieeexplore.ieee.org/document/4339230 で説明している 
+    Change Distiller アルゴリズムの実装は、Chawathe らが http://ilpubs.stanford.edu:8090/115/1/1995-46.pdf 
+    で説明しているアルゴリズムに基づいています。
     """
 
     def __init__(self, f: float = 0.6, t: float = 0.6, dialect: DialectType = None) -> None:
@@ -337,6 +360,7 @@ class ChangeDistiller:
                         )
 
         # Pick best matchings based on the highest score
+        # 最高スコアに基づいて最適なマッチングを選択する
         matching_set = set()
         while candidate_matchings:
             _, _, _, source_leaf, target_leaf = heappop(candidate_matchings)
@@ -434,7 +458,8 @@ def _expression_only_args(expression: exp.Expression) -> t.Iterator[exp.Expressi
 def _lcs(
     seq_a: t.Sequence[T], seq_b: t.Sequence[T], equal: t.Callable[[T, T], bool]
 ) -> t.Sequence[t.Optional[T]]:
-    """Calculates the longest common subsequence"""
+    """Calculates the longest common subsequence
+    最長共通部分列を計算する"""
 
     len_a = len(seq_a)
     len_b = len(seq_b)

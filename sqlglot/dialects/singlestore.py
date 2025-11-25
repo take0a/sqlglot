@@ -95,6 +95,10 @@ class SingleStore(MySQL):
             # This is needed because exp.TimeToStr is converted to DATE_FORMAT
             # which interprets the first argument as DATETIME and fails to parse
             # string literals like '12:05:47' without a date part.
+            # 以下の関数の最初の引数はTIME(6)に変換されます。
+            # これは、exp.TimeToStrがDATE_FORMATに変換されるため必要です。
+            # DATE_FORMATは最初の引数をDATETIMEとして解釈し、日付部分のない
+            # 「12:05:47」のような文字列リテラルを解析できません。
             "TIME_FORMAT": lambda args: exp.TimeToStr(
                 this=cast_to_time6(seq_get(args, 0)),
                 format=MySQL.format_time(seq_get(args, 1)),
@@ -325,6 +329,7 @@ class SingleStore(MySQL):
         @staticmethod
         def _unicode_substitute(m: re.Match[str]) -> str:
             # Interpret the number as hex and convert it to the Unicode string
+            # 数値を16進数として解釈し、Unicode文字列に変換します
             return chr(int(m.group(1), 16))
 
         UNICODE_SUBSTITUTE: t.Optional[t.Callable[[re.Match[str]], str]] = _unicode_substitute
@@ -1755,6 +1760,7 @@ class SingleStore(MySQL):
         def datatype_sql(self, expression: exp.DataType) -> str:
             if expression.is_type(exp.DataType.Type.VARBINARY) and not expression.expressions:
                 # `VARBINARY` must always have a size - if it doesn't, we always generate `BLOB`
+                # `VARBINARY` は常にサイズを持っている必要があります - 持っていない場合は、常に `BLOB` を生成します
                 return "BLOB"
             if expression.is_type(
                 exp.DataType.Type.DECIMAL32,
@@ -1772,6 +1778,7 @@ class SingleStore(MySQL):
                     precision = "38"
                 else:
                     # 65 is a maximum precision supported in SingleStore
+                    # 65はSingleStoreでサポートされる最大精度です
                     precision = "65"
                 if scale is not None:
                     return f"DECIMAL({precision}, {scale[0]})"
@@ -1791,6 +1798,8 @@ class SingleStore(MySQL):
         def collate_sql(self, expression: exp.Collate) -> str:
             # SingleStore does not support setting a collation for column in the SELECT query,
             # so we cast column to a LONGTEXT type with specific collation
+            # SingleStoreはSELECTクエリの列の照合順序の設定をサポートしていないため、
+            # 特定の照合順序を持つLONGTEXT型に列をキャストします。
             return self.binary(expression, ":> LONGTEXT COLLATE")
 
         def currentdate_sql(self, expression: exp.CurrentDate) -> str:

@@ -66,6 +66,8 @@ def _unalias_pivot(expression: exp.Expression) -> exp.Expression:
     """
     Spark doesn't allow PIVOT aliases, so we need to remove them and possibly wrap a
     pivoted source in a subquery with the same alias to preserve the query's semantics.
+    Spark では PIVOT エイリアスが許可されていないため、クエリのセマンティクスを保持するために、
+    それらを削除し、ピボットされたソースを同じエイリアスを持つサブクエリでラップする必要があります。
 
     Example:
         >>> from sqlglot import parse_one
@@ -92,6 +94,8 @@ def _unqualify_pivot_columns(expression: exp.Expression) -> exp.Expression:
     """
     Spark doesn't allow the column referenced in the PIVOT's field to be qualified,
     so we need to unqualify it.
+    Spark では、PIVOT のフィールドで参照される列を修飾することはできないため、
+    修飾を解除する必要があります。
 
     Example:
         >>> from sqlglot import parse_one
@@ -109,6 +113,7 @@ def _unqualify_pivot_columns(expression: exp.Expression) -> exp.Expression:
 
 def temporary_storage_provider(expression: exp.Expression) -> exp.Expression:
     # spark2, spark, Databricks require a storage provider for temporary tables
+    # spark2、spark、Databricksでは一時テーブル用のストレージプロバイダーが必要です
     provider = exp.FileFormatProperty(this=exp.Literal.string("parquet"))
     expression.args["properties"].append("expressions", provider)
     return expression
@@ -309,6 +314,7 @@ class Spark2(Hive):
             ) and not arg.args.get("variant_extract")
 
             # We can't use a non-nested type (eg. STRING) as a schema
+            # ネストされていない型（例：STRING）をスキーマとして使用することはできません。
             if expression.to.args.get("nested") and (is_parse_json(arg) or is_json_extract):
                 schema = f"'{self.sql(expression, 'to')}'"
                 return self.func("FROM_JSON", arg if is_json_extract else arg.this, schema)

@@ -8,16 +8,20 @@ from sqlglot.helper import AutoName
 
 class ErrorLevel(AutoName):
     IGNORE = auto()
-    """Ignore all errors."""
+    """Ignore all errors.
+    すべてのエラーを無視します。"""
 
     WARN = auto()
-    """Log all errors."""
+    """Log all errors.
+    すべてのエラーをログに記録します。"""
 
     RAISE = auto()
-    """Collect all errors and raise a single exception."""
+    """Collect all errors and raise a single exception.
+    すべてのエラーを収集し、単一の例外を発生させます。"""
 
     IMMEDIATE = auto()
-    """Immediately raise an exception on the first error found."""
+    """Immediately raise an exception on the first error found.
+    最初に見つかったエラーに対して直ちに例外を発生させます。"""
 
 
 class SqlglotError(Exception):

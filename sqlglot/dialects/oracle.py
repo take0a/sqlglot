@@ -177,6 +177,7 @@ class Oracle(Dialect):
         }
 
         # SELECT UNIQUE .. is old-style Oracle syntax for SELECT DISTINCT ..
+        # SELECT UNIQUE .. は、SELECT DISTINCT .. の古いスタイルの Oracle 構文です。
         # Reference: https://stackoverflow.com/a/336455
         DISTINCT_TOKENS = {TokenType.DISTINCT, TokenType.UNIQUE}
 

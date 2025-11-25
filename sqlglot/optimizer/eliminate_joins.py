@@ -6,8 +6,10 @@ from sqlglot.optimizer.scope import Scope, traverse_scope
 def eliminate_joins(expression):
     """
     Remove unused joins from an expression.
+    式から未使用の結合を削除します。
 
     This only removes joins when we know that the join condition doesn't produce duplicate rows.
+    これは、結合条件によって重複行が生成されないことがわかっている場合にのみ結合を削除します。
 
     Example:
         >>> import sqlglot
@@ -18,19 +20,24 @@ def eliminate_joins(expression):
 
     Args:
         expression (sqlglot.Expression): expression to optimize
+            最適化する式
     Returns:
         sqlglot.Expression: optimized expression
+        sqlglot.Expression: 最適化された式
     """
     for scope in traverse_scope(expression):
         # If any columns in this scope aren't qualified, it's hard to determine if a join isn't used.
         # It's probably possible to infer this from the outputs of derived tables.
         # But for now, let's just skip this rule.
+        # このスコープ内の列が修飾されていない場合、結合が使用されていないかどうかを判断するのは困難です。
+        # 派生テーブルの出力からこれを推測することはおそらく可能ですが、今のところはこのルールは無視しましょう。
         if scope.unqualified_columns:
             continue
 
         joins = scope.expression.args.get("joins", [])
 
         # Reverse the joins so we can remove chains of unused joins
+        # 未使用の結合の連鎖を削除できるように結合を逆にする
         for join in reversed(joins):
             if join.is_semi_or_anti_join:
                 continue
@@ -57,6 +64,8 @@ def _should_eliminate_join(scope, join, alias):
 def _join_is_used(scope, join, alias):
     # We need to find all columns that reference this join.
     # But columns in the ON clause shouldn't count.
+    # この結合を参照するすべての列を見つける必要があります。
+    # ただし、ON 句内の列はカウントされません。
     on = join.args.get("on")
     if on:
         on_clause_columns = {id(column) for column in on.find_all(exp.Column)}
@@ -78,7 +87,8 @@ def _is_joined_on_all_unique_outputs(scope, join):
 
 
 def _unique_outputs(scope):
-    """Determine output columns of `scope` that must have a unique combination per row"""
+    """Determine output columns of `scope` that must have a unique combination per row
+    行ごとに一意の組み合わせを持つ必要がある `scope` の出力列を決定します"""
     if scope.expression.args.get("distinct"):
         return set(scope.expression.named_selects)
 
@@ -95,6 +105,7 @@ def _unique_outputs(scope):
                 unique_outputs.add(select.alias_or_name)
 
         # All the grouped expressions must be in the output
+        # グループ化された式はすべて出力に含まれている必要があります
         if not grouped_expressions.difference(grouped_outputs):
             return unique_outputs
         else:
@@ -122,6 +133,7 @@ def _is_limit_1(scope):
 def join_condition(join):
     """
     Extract the join condition from a join expression.
+    結合式から結合条件を抽出します。
 
     Args:
         join (exp.Join)

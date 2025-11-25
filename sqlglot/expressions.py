@@ -2,10 +2,14 @@
 ## Expressions
 
 Every AST node in SQLGlot is represented by a subclass of `Expression`.
+SQLGlot のすべての AST ノードは、`Expression` のサブクラスで表現されます。
 
 This module contains the implementation of all supported `Expression` types. Additionally,
 it exposes a number of helper functions, which are mainly used to programmatically build
 SQL expressions, such as `sqlglot.expressions.select`.
+このモジュールには、サポートされているすべての `Expression` 型の実装が含まれています。
+さらに、`sqlglot.expressions.select` など、主に SQL 式をプログラムで構築するために
+使用されるヘルパー関数もいくつか公開しています。
 
 ----
 """
@@ -54,10 +58,12 @@ class _Expression(type):
 
         # When an Expression class is created, its key is automatically set
         # to be the lowercase version of the class' name.
+        # Expression クラスが作成されると、そのキーはクラス名の小文字バージョンに自動的に設定されます。
         klass.key = clsname.lower()
         klass.required_args = {k for k, v in klass.arg_types.items() if v}
 
         # This is so that docstrings are not inherited in pdoc
+        # これは、docstringがpdocに継承されないようにするためです。
         klass.__doc__ = klass.__doc__ or ""
 
         return klass
@@ -76,21 +82,34 @@ class Expression(metaclass=_Expression):
     The base class for all expressions in a syntax tree. Each Expression encapsulates any necessary
     context, such as its child expressions, their names (arg keys), and whether a given child expression
     is optional or not.
+    構文ツリー内のすべての式の基本クラスです。
+    各式は、子式、その名前（引数キー）、特定の子式がオプションかどうかなど、必要なコンテキストをカプセル化します。
 
     Attributes:
         key: a unique key for each class in the Expression hierarchy. This is useful for hashing
             and representing expressions as strings.
+            式階層内の各クラスに固有のキー。これは、式をハッシュ化したり文字列として表現したりする際に便利です。
         arg_types: determines the arguments (child nodes) supported by an expression. It maps
             arg keys to booleans that indicate whether the corresponding args are optional.
+            式がサポートする引数（子ノード）を決定します。
+            引数キーを、対応する引数がオプションかどうかを示すブール値にマッピングします。
         parent: a reference to the parent expression (or None, in case of root expressions).
+            親式への参照 (ルート式の場合は None)。
         arg_key: the arg key an expression is associated with, i.e. the name its parent expression
             uses to refer to it.
+            式が関連付けられている arg キー、つまり親式がそれを参照するために使用する名前。
         index: the index of an expression if it is inside of a list argument in its parent.
+            式が親のリスト引数内にある場合の式のインデックス。
         comments: a list of comments that are associated with a given expression. This is used in
             order to preserve comments when transpiling SQL code.
+            特定の式に関連付けられたコメントのリスト。
+            これは、SQLコードのトランスパイル時にコメントを保持するために使用されます。
         type: the `sqlglot.expressions.DataType` type of an expression. This is inferred by the
             optimizer, in order to enable some transformations that require type information.
+            式の `sqlglot.expressions.DataType` 型。
+            これは、型情報を必要とする一部の変換を可能にするために、オプティマイザによって推論されます。
         meta: a dictionary that can be used to store useful metadata for a given expression.
+            特定の表現の有用なメタデータを保存するために使用できる辞書。
 
     Example:
         >>> class Foo(Expression):
@@ -98,9 +117,12 @@ class Expression(metaclass=_Expression):
 
         The above definition informs us that Foo is an Expression that requires an argument called
         "this" and may also optionally receive an argument called "expression".
+        上記の定義から、Foo は「this」と呼ばれる引数を必要とする Expression であり、
+        オプションで「expression」と呼ばれる引数も受け取ることができることがわかります。
 
     Args:
         args: a mapping used for retrieving the arguments of an expression, given their arg keys.
+            引数キーを指定して式の引数を取得するために使用されるマッピング。
     """
 
     key = "expression"
@@ -171,6 +193,7 @@ class Expression(metaclass=_Expression):
     def this(self) -> t.Any:
         """
         Retrieves the argument with key "this".
+        キー「this」を持つ引数を取得します。
         """
         return self.args.get("this")
 
@@ -178,6 +201,7 @@ class Expression(metaclass=_Expression):
     def expression(self) -> t.Any:
         """
         Retrieves the argument with key "expression".
+        キー「expression」を持つ引数を取得します。
         """
         return self.args.get("expression")
 
@@ -192,6 +216,8 @@ class Expression(metaclass=_Expression):
         """
         Returns a textual representation of the argument corresponding to "key". This can only be used
         for args that are strings or leaf Expression instances, such as identifiers and literals.
+        「キー」に対応する引数のテキスト表現を返します。
+        これは、識別子やリテラルなどの文字列またはリーフExpressionインスタンスである引数にのみ使用できます。
         """
         field = self.args.get(key)
         if isinstance(field, str):
@@ -206,6 +232,7 @@ class Expression(metaclass=_Expression):
     def is_string(self) -> bool:
         """
         Checks whether a Literal expression is a string.
+        リテラル式が文字列であるかどうかを確認します。
         """
         return isinstance(self, Literal) and self.args["is_string"]
 
@@ -213,6 +240,7 @@ class Expression(metaclass=_Expression):
     def is_number(self) -> bool:
         """
         Checks whether a Literal expression is a number.
+        リテラル式が数値かどうかを確認します。
         """
         return (isinstance(self, Literal) and not self.args["is_string"]) or (
             isinstance(self, Neg) and self.this.is_number
@@ -221,6 +249,7 @@ class Expression(metaclass=_Expression):
     def to_py(self) -> t.Any:
         """
         Returns a Python object equivalent of the SQL node.
+        SQL ノードと同等の Python オブジェクトを返します。
         """
         raise ValueError(f"{self} cannot be converted to a Python object.")
 
@@ -228,18 +257,21 @@ class Expression(metaclass=_Expression):
     def is_int(self) -> bool:
         """
         Checks whether an expression is an integer.
+        式が整数かどうかを確認します。
         """
         return self.is_number and isinstance(self.to_py(), int)
 
     @property
     def is_star(self) -> bool:
-        """Checks whether an expression is a star."""
+        """Checks whether an expression is a star.
+        式がアスタリスクかどうかを確認します。"""
         return isinstance(self, Star) or (isinstance(self, Column) and isinstance(self.this, Star))
 
     @property
     def alias(self) -> str:
         """
         Returns the alias of the expression, or an empty string if it's not aliased.
+        式のエイリアスを返します。エイリアスが設定されていない場合は空の文字列を返します。
         """
         if isinstance(self.args.get("alias"), TableAlias):
             return self.args["alias"].name
@@ -264,8 +296,10 @@ class Expression(metaclass=_Expression):
     def output_name(self) -> str:
         """
         Name of the output column if this expression is a selection.
+        この式が select である場合の出力列の名前。
 
         If the Expression has no output name, an empty string is returned.
+        式に出力名がない場合、空の文字列が返されます。
 
         Example:
             >>> from sqlglot import parse_one
@@ -337,6 +371,7 @@ class Expression(metaclass=_Expression):
     def copy(self) -> Self:
         """
         Returns a deep copy of the expression.
+        式のディープコピーを返します。
         """
         return deepcopy(self)
 
@@ -367,10 +402,13 @@ class Expression(metaclass=_Expression):
     def append(self, arg_key: str, value: t.Any) -> None:
         """
         Appends value to arg_key if it's a list or sets it as a new list.
+        リストの場合は arg_key に値を追加し、リストの場合は新しいリストとして設定します。
 
         Args:
             arg_key (str): name of the list expression arg
+                リスト式引数の名前
             value (Any): value to append to the list
+                リストに追加する値
         """
         if type(self.args.get(arg_key)) is not list:
             self.args[arg_key] = []
@@ -389,13 +427,19 @@ class Expression(metaclass=_Expression):
     ) -> None:
         """
         Sets arg_key to value.
+        arg_key を値に設定します。
 
         Args:
             arg_key: name of the expression arg.
+                式引数の名前。
             value: value to set the arg to.
+                引数に設定する値。
             index: if the arg is a list, this specifies what position to add the value in it.
+                引数がリストの場合、値を追加する位置を指定します。
             overwrite: assuming an index is given, this determines whether to overwrite the
                 list entry instead of only inserting a new value (i.e., like list.insert).
+                インデックスが指定されていると仮定すると、新しい値を挿入するだけでなく、
+                リストエントリを上書きするかどうかを決定します (つまり、list.insert のように)。
         """
         expression: t.Optional[Expression] = self
 
@@ -446,13 +490,15 @@ class Expression(metaclass=_Expression):
     def depth(self) -> int:
         """
         Returns the depth of this tree.
+        このツリーの深さを返します。
         """
         if self.parent:
             return self.parent.depth + 1
         return 0
 
     def iter_expressions(self, reverse: bool = False) -> t.Iterator[Expression]:
-        """Yields the key and expression for all arguments, exploding list args."""
+        """Yields the key and expression for all arguments, exploding list args.
+        リスト引数を展開して、すべての引数のキーと式を生成します。"""
         for vs in reversed(self.args.values()) if reverse else self.args.values():  # type: ignore
             if type(vs) is list:
                 for v in reversed(vs) if reverse else vs:  # type: ignore
@@ -465,13 +511,19 @@ class Expression(metaclass=_Expression):
         """
         Returns the first node in this tree which matches at least one of
         the specified types.
+        このツリー内で指定されたタイプの少なくとも 1 つに一致する最初のノードを返します。
 
         Args:
             expression_types: the expression type(s) to match.
+                一致する表現タイプ。
             bfs: whether to search the AST using the BFS algorithm (DFS is used if false).
+                BFS アルゴリズムを使用して AST を検索するかどうか (false の場合は DFS が使用されます)。
+                幅優先探索（BFS: Breadth-First Search）
+                深さ優先探索（DFS: Depth-First Search）
 
         Returns:
             The node which matches the criteria or None if no such node was found.
+            条件に一致するノード、またはそのようなノードが見つからなかった場合は None。
         """
         return next(self.find_all(*expression_types, bfs=bfs), None)
 
@@ -479,13 +531,18 @@ class Expression(metaclass=_Expression):
         """
         Returns a generator object which visits all nodes in this tree and only
         yields those that match at least one of the specified expression types.
+        このツリー内のすべてのノードを訪問し、指定された式タイプの少なくとも 1 つに一致する
+        ノードのみを生成するジェネレータ オブジェクトを返します。
 
         Args:
             expression_types: the expression type(s) to match.
+                一致する式の型。
             bfs: whether to search the AST using the BFS algorithm (DFS is used if false).
+                BFS アルゴリズムを使用して AST を検索するかどうか (false の場合は DFS が使用されます)。
 
         Returns:
             The generator object.
+            ジェネレーター オブジェクト。
         """
         for expression in self.walk(bfs=bfs):
             if isinstance(expression, expression_types):
@@ -494,12 +551,15 @@ class Expression(metaclass=_Expression):
     def find_ancestor(self, *expression_types: t.Type[E]) -> t.Optional[E]:
         """
         Returns a nearest parent matching expression_types.
+        式タイプに一致する最も近い親を返します。
 
         Args:
             expression_types: the expression type(s) to match.
+                一致する式の型。
 
         Returns:
             The parent node.
+            親ノード。
         """
         ancestor = self.parent
         while ancestor and not isinstance(ancestor, expression_types):
@@ -510,17 +570,20 @@ class Expression(metaclass=_Expression):
     def parent_select(self) -> t.Optional[Select]:
         """
         Returns the parent select statement.
+        親の select ステートメントを返します。
         """
         return self.find_ancestor(Select)
 
     @property
     def same_parent(self) -> bool:
-        """Returns if the parent is the same class as itself."""
+        """Returns if the parent is the same class as itself.
+        親がそれ自身と同じクラスであるかどうかを返します。"""
         return type(self.parent) is self.__class__
 
     def root(self) -> Expression:
         """
         Returns the root expression of this tree.
+        このツリーのルート式を返します。
         """
         expression = self
         while expression.parent:
@@ -532,15 +595,21 @@ class Expression(metaclass=_Expression):
     ) -> t.Iterator[Expression]:
         """
         Returns a generator object which visits all nodes in this tree.
+        このツリー内のすべてのノードを訪問するジェネレータ オブジェクトを返します。
 
         Args:
             bfs: if set to True the BFS traversal order will be applied,
                 otherwise the DFS traversal will be used instead.
+                True に設定すると BFS トラバーサル順序が適用され、
+                それ以外の場合は代わりに DFS トラバーサルが使用されます。
             prune: callable that returns True if the generator should stop traversing
                 this branch of the tree.
+                ジェネレーターがツリーのこのブランチのトラバースを停止する必要がある場合に 
+                True を返す呼び出し可能オブジェクト。
 
         Returns:
             the generator object.
+            ジェネレーター オブジェクト。
         """
         if bfs:
             yield from self.bfs(prune=prune)
@@ -553,9 +622,12 @@ class Expression(metaclass=_Expression):
         """
         Returns a generator object which visits all nodes in this tree in
         the DFS (Depth-first) order.
+        このツリー内のすべてのノードを DFS (深さ優先) 順序で訪問するジェネレータ 
+        オブジェクトを返します。
 
         Returns:
             The generator object.
+            ジェネレーター オブジェクト。
         """
         stack = [self]
 
@@ -576,9 +648,12 @@ class Expression(metaclass=_Expression):
         """
         Returns a generator object which visits all nodes in this tree in
         the BFS (Breadth-first) order.
+        このツリー内のすべてのノードを BFS (幅優先) 順序で訪問するジェネレータ 
+        オブジェクトを返します。
 
         Returns:
             The generator object.
+            ジェネレーター オブジェクト。
         """
         queue = deque([self])
 
@@ -596,6 +671,7 @@ class Expression(metaclass=_Expression):
     def unnest(self):
         """
         Returns the first non parenthesis child or self.
+        最初の括弧以外の子または自身を返します。
         """
         expression = self
         while type(expression) is Paren:
@@ -605,6 +681,7 @@ class Expression(metaclass=_Expression):
     def unalias(self):
         """
         Returns the inner expression if this is an Alias.
+        これがエイリアスの場合、内部式を返します。
         """
         if isinstance(self, Alias):
             return self.this
@@ -613,12 +690,14 @@ class Expression(metaclass=_Expression):
     def unnest_operands(self):
         """
         Returns unnested operands as a tuple.
+        ネストされていないオペランドをタプルとして返します。
         """
         return tuple(arg.unnest() for arg in self.iter_expressions())
 
     def flatten(self, unnest=True):
         """
         Returns a generator which yields child nodes whose parents are the same class.
+        親が同じクラスである子ノードを生成するジェネレータを返します。
 
         A AND B AND C -> [A, B, C]
         """
@@ -636,19 +715,25 @@ class Expression(metaclass=_Expression):
         """
         Same as __repr__, but includes additional information which can be useful
         for debugging, like empty or missing args and the AST nodes' object IDs.
+        __repr__ と同じですが、空または欠落した引数や AST ノードのオブジェクト ID など、
+        デバッグに役立つ追加情報が含まれます。
         """
         return _to_s(self, verbose=True)
 
     def sql(self, dialect: DialectType = None, **opts) -> str:
         """
         Returns SQL string representation of this tree.
+        このツリーの SQL 文字列表現を返します。
 
         Args:
             dialect: the dialect of the output SQL string (eg. "spark", "hive", "presto", "mysql").
+                出力 SQL 文字列の方言 (例: "spark"、"hive"、"presto"、"mysql")。
             opts: other `sqlglot.generator.Generator` options.
+                その他の `sqlglot.generator.Generator` オプション。
 
         Returns:
             The SQL string.
+            SQL 文字列。
         """
         from sqlglot.dialects import Dialect
 
@@ -658,16 +743,22 @@ class Expression(metaclass=_Expression):
         """
         Visits all tree nodes (excluding already transformed ones)
         and applies the given transformation function to each node.
+        すべてのツリー ノード (すでに変換されたものを除く) を訪問し、
+        指定された変換関数を各ノードに適用します。
 
         Args:
             fun: a function which takes a node as an argument and returns a
                 new transformed node or the same node without modifications. If the function
                 returns None, then the corresponding node will be removed from the syntax tree.
+                ノードを引数として受け取り、変換された新しいノード、または変更されていない同じノードを返す関数。
+                関数がNoneを返す場合、対応するノードは構文木から削除されます。
             copy: if set to True a new tree instance is constructed, otherwise the tree is
                 modified in place.
+                True に設定すると、新しいツリー インスタンスが構築され、それ以外の場合はツリーがその場で変更されます。
 
         Returns:
             The transformed tree.
+            変形した木。
         """
         root = None
         new_node = None
@@ -693,6 +784,7 @@ class Expression(metaclass=_Expression):
     def replace(self, expression):
         """
         Swap out this expression with a new expression.
+        この式を新しい式に置き換えます。
 
         For example::
 
@@ -705,9 +797,11 @@ class Expression(metaclass=_Expression):
 
         Args:
             expression: new node
+                新しいノード
 
         Returns:
             The new expression or expressions.
+            新しい式
         """
         parent = self.parent
 
@@ -720,6 +814,8 @@ class Expression(metaclass=_Expression):
         if type(expression) is list and isinstance(value, Expression):
             # We are trying to replace an Expression with a list, so it's assumed that
             # the intention was to really replace the parent of this expression.
+            # 式をリストに置き換えようとしているので、
+            # 実際にはこの式の親を置き換えることが意図されていたと想定されます。
             value.parent.replace(expression)
         else:
             parent.set(key, expression, self.index)
@@ -734,9 +830,11 @@ class Expression(metaclass=_Expression):
     def pop(self: E) -> E:
         """
         Remove this expression from its AST.
+        この式を AST から削除します。
 
         Returns:
             The popped expression.
+            pop 後の式
         """
         self.replace(None)
         return self
@@ -744,12 +842,16 @@ class Expression(metaclass=_Expression):
     def assert_is(self, type_: t.Type[E]) -> E:
         """
         Assert that this `Expression` is an instance of `type_`.
+        この `Expression` が `type_` のインスタンスであることをアサートします。
 
         If it is NOT an instance of `type_`, this raises an assertion error.
         Otherwise, this returns this expression.
+        `type_` のインスタンスでない場合は、アサーションエラーが発生します。
+        それ以外の場合は、この式を返します。
 
         Examples:
             This is useful for type security in chained expressions:
+            これは連鎖式の型セキュリティに役立ちます。
 
             >>> import sqlglot
             >>> sqlglot.parse_one("SELECT x from y").assert_is(Select).select("z").sql()
@@ -762,13 +864,17 @@ class Expression(metaclass=_Expression):
     def error_messages(self, args: t.Optional[t.Sequence] = None) -> t.List[str]:
         """
         Checks if this expression is valid (e.g. all mandatory args are set).
+        この式が有効かどうかを確認します (例: すべての必須引数が設定されているかどうか)。
 
         Args:
             args: a sequence of values that were used to instantiate a Func expression. This is used
                 to check that the provided arguments don't exceed the function argument limit.
+                Func 式をインスタンス化するために使用された値のシーケンス。
+                これは、指定された引数が関数の引数制限を超えていないことを確認するために使用されます。
 
         Returns:
             A list of error messages for all possible errors that were found.
+            見つかったすべての可能性のあるエラーのエラー メッセージのリスト。
         """
         errors: t.List[str] = []
 
@@ -798,6 +904,7 @@ class Expression(metaclass=_Expression):
     def dump(self):
         """
         Dump this Expression to a JSON-serializable dict.
+        この式を JSON シリアル化可能な辞書にダンプします。
         """
         from sqlglot.serde import dump
 
@@ -807,6 +914,7 @@ class Expression(metaclass=_Expression):
     def load(cls, obj):
         """
         Load a dict (as returned by `Expression.dump`) into an Expression instance.
+        辞書 (`Expression.dump` によって返される) を Expression インスタンスに読み込みます。
         """
         from sqlglot.serde import load
 
@@ -822,6 +930,7 @@ class Expression(metaclass=_Expression):
     ) -> Condition:
         """
         AND this condition with one or multiple expressions.
+        この条件を 1 つまたは複数の式と AND します。
 
         Example:
             >>> condition("x=1").and_("y=1").sql()
@@ -830,15 +939,23 @@ class Expression(metaclass=_Expression):
         Args:
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
+                解析するSQLコード文字列。`Expression`インスタンスが渡された場合は、そのまま使用されます。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: whether to copy the involved expressions (only applies to Expressions).
+                関連する式をコピーするかどうか (式にのみ適用)。
             wrap: whether to wrap the operands in `Paren`s. This is true by default to avoid
                 precedence issues, but can be turned off when the produced AST is too deep and
                 causes recursion-related issues.
+                オペランドを `Paren` で囲むかどうか。
+                優先順位の問題を回避するため、デフォルトでは有効になっていますが、
+                生成される AST が深すぎて再帰関連の問題が発生する場合は無効にすることができます。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The new And condition.
+            新しい And 条件。
         """
         return and_(self, *expressions, dialect=dialect, copy=copy, wrap=wrap, **opts)
 
@@ -852,6 +969,7 @@ class Expression(metaclass=_Expression):
     ) -> Condition:
         """
         OR this condition with one or multiple expressions.
+        この条件を 1 つまたは複数の式と OR します。
 
         Example:
             >>> condition("x=1").or_("y=1").sql()
@@ -860,21 +978,30 @@ class Expression(metaclass=_Expression):
         Args:
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
+                解析するSQLコード文字列。`Expression`インスタンスが渡された場合は、そのまま使用されます。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: whether to copy the involved expressions (only applies to Expressions).
+                関連する式をコピーするかどうか (式にのみ適用)。
             wrap: whether to wrap the operands in `Paren`s. This is true by default to avoid
                 precedence issues, but can be turned off when the produced AST is too deep and
                 causes recursion-related issues.
+                オペランドを `Paren` で囲むかどうか。
+                優先順位の問題を回避するため、デフォルトでは有効になっていますが、
+                生成される AST が深すぎて再帰関連の問題が発生する場合は無効にすることができます。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The new Or condition.
+            新しい Or 条件。
         """
         return or_(self, *expressions, dialect=dialect, copy=copy, wrap=wrap, **opts)
 
     def not_(self, copy: bool = True):
         """
         Wrap this condition with NOT.
+        この条件を NOT で囲みます。
 
         Example:
             >>> condition("x=1").not_().sql()
@@ -882,9 +1009,11 @@ class Expression(metaclass=_Expression):
 
         Args:
             copy: whether to copy this object.
+                このオブジェクトをコピーするかどうか。
 
         Returns:
             The new Not instance.
+            新しい Not インスタンス。
         """
         return not_(self, copy=copy)
 
@@ -898,16 +1027,23 @@ class Expression(metaclass=_Expression):
     ) -> E:
         """
         Update this expression with positions from a token or other expression.
+        トークンまたは他の式の位置を使用してこの式を更新します。
 
         Args:
             other: a token or expression to update this expression with.
+                この式を更新するためのトークンまたは式。
             line: the line number to use if other is None
+                other が None の場合に使用する行番号
             col: column number
+                カラム番号
             start: start char index
+                開始文字インデックス
             end:  end char index
+                終了文字インデックス
 
         Returns:
             The updated expression.
+            更新された表現。
         """
         if other is None:
             self.meta["line"] = line
@@ -954,6 +1090,8 @@ class Expression(metaclass=_Expression):
             return iter(self.args.get("expressions") or [])
         # We define this because __getitem__ converts Expression into an iterable, which is
         # problematic because one can hit infinite loops if they do "for x in some_expr: ..."
+        # これを定義する理由は、__getitem__ が Expression を反復可能オブジェクトに変換するためです。
+        # これは、「for x in some_expr: ...」を実行すると無限ループに陥る可能性があるため問題となります。
         # See: https://peps.python.org/pep-0234/
         raise TypeError(f"'{self.__class__.__name__}' object is not iterable")
 
@@ -1115,11 +1253,13 @@ ExpOrStr = t.Union[str, Expression]
 
 
 class Condition(Expression):
-    """Logical conditions like x AND y, or simply x"""
+    """Logical conditions like x AND y, or simply x
+    x AND yのような論理条件、または単にx"""
 
 
 class Predicate(Condition):
-    """Relationships like x = y, x > 1, x >= y."""
+    """Relationships like x = y, x > 1, x >= y.
+    x = y、x > 1、x >= y のような関係。"""
 
 
 class DerivedTable(Expression):
@@ -1136,6 +1276,7 @@ class Query(Expression):
     def subquery(self, alias: t.Optional[ExpOrStr] = None, copy: bool = True) -> Subquery:
         """
         Returns a `Subquery` that wraps around this query.
+        このクエリをラップする `サブクエリ` を返します。
 
         Example:
             >>> subquery = Select().select("x").from_("tbl").subquery()
@@ -1144,7 +1285,9 @@ class Query(Expression):
 
         Args:
             alias: an optional alias for the subquery.
+                サブクエリのオプションのエイリアス。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
         """
         instance = maybe_copy(self, copy)
         if not isinstance(alias, Expression):
@@ -1157,6 +1300,7 @@ class Query(Expression):
     ) -> Q:
         """
         Adds a LIMIT clause to this query.
+        このクエリに LIMIT 句を追加します。
 
         Example:
             >>> select("1").union(select("1")).limit(1).sql()
@@ -1167,12 +1311,19 @@ class Query(Expression):
                 This can also be an integer.
                 If a `Limit` instance is passed, it will be used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `Limit`.
+                解析するSQLコード文字列。整数も指定できます。
+                `Limit`インスタンスが渡された場合は、そのまま使用されます。
+                別の`Expression`インスタンスが渡された場合は、`Limit`でラップされます。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             A limited Select expression.
+            制限された Select 式。
         """
         return _apply_builder(
             expression=expression,
@@ -1191,6 +1342,7 @@ class Query(Expression):
     ) -> Q:
         """
         Set the OFFSET expression.
+        OFFSET式を設定します。
 
         Example:
             >>> Select().from_("tbl").select("x").offset(10).sql()
@@ -1201,12 +1353,19 @@ class Query(Expression):
                 This can also be an integer.
                 If a `Offset` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `Offset`.
+                解析するSQLコード文字列。整数も指定できます。
+                `Offset`インスタンスが渡された場合は、そのまま使用されます。
+                別の`Expression`インスタンスが渡された場合は、`Offset`で囲まれます。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         return _apply_builder(
             expression=expression,
@@ -1230,6 +1389,7 @@ class Query(Expression):
     ) -> Q:
         """
         Set the ORDER BY expression.
+        ORDER BY 式を設定します。
 
         Example:
             >>> Select().from_("tbl").select("x").order_by("x DESC").sql()
@@ -1239,14 +1399,23 @@ class Query(Expression):
             *expressions: the SQL code strings to parse.
                 If a `Group` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `Order`.
+                解析する SQL コード文字列。
+                `Group` インスタンスが渡された場合は、そのまま使用されます。
+                別の `Expression` インスタンスが渡された場合は、`Order` でラップされます。
             append: if `True`, add to any existing expressions.
                 Otherwise, this flattens all the `Order` expression into a single expression.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、すべての `Order` 式を 1 つの式にフラット化します。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         return _apply_child_list_builder(
             *expressions,
@@ -1262,18 +1431,21 @@ class Query(Expression):
 
     @property
     def ctes(self) -> t.List[CTE]:
-        """Returns a list of all the CTEs attached to this query."""
+        """Returns a list of all the CTEs attached to this query.
+        このクエリに添付されているすべての CTE のリストを返します。"""
         with_ = self.args.get("with_")
         return with_.expressions if with_ else []
 
     @property
     def selects(self) -> t.List[Expression]:
-        """Returns the query's projections."""
+        """Returns the query's projections.
+        クエリの予測を返します。"""
         raise NotImplementedError("Query objects must implement `selects`")
 
     @property
     def named_selects(self) -> t.List[str]:
-        """Returns the output names of the query's projections."""
+        """Returns the output names of the query's projections.
+        クエリの投影の出力名を返します。"""
         raise NotImplementedError("Query objects must implement `named_selects`")
 
     def select(
@@ -1286,6 +1458,7 @@ class Query(Expression):
     ) -> Q:
         """
         Append to or set the SELECT expressions.
+        SELECT 式に追加または設定します。
 
         Example:
             >>> Select().select("x", "y").sql()
@@ -1294,14 +1467,22 @@ class Query(Expression):
         Args:
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
+                解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             append: if `True`, add to any existing expressions.
                 Otherwise, this resets the expressions.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、式をリセットします。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Query expression.
+            変更されたクエリ式。
         """
         raise NotImplementedError("Query objects must implement `select`")
 
@@ -1315,6 +1496,7 @@ class Query(Expression):
     ) -> Q:
         """
         Append to or set the WHERE expressions.
+        WHERE 式に追加または設定します。
 
         Examples:
             >>> Select().select("x").from_("tbl").where("x = 'a' OR x < 'b'").sql()
@@ -1324,14 +1506,23 @@ class Query(Expression):
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
                 Multiple expressions are combined with an AND operator.
+                解析するSQLコード文字列。
+                `Expression`インスタンスが渡された場合は、そのまま使用されます。
+                複数の式はAND演算子で結合されます。
             append: if `True`, AND the new expressions to any existing expression.
                 Otherwise, this resets the expression.
+                `True` の場合、新しい式と既存の式との AND 演算が行われます。
+                それ以外の場合は、式がリセットされます。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified expression.
+            変更された式。
         """
         return _apply_conjunction_builder(
             *[expr.this if isinstance(expr, Where) else expr for expr in expressions],
@@ -1358,6 +1549,7 @@ class Query(Expression):
     ) -> Q:
         """
         Append to or set the common table expressions.
+        共通テーブル式を追加または設定します。
 
         Example:
             >>> Select().with_("tbl2", as_="SELECT * FROM tbl").select("x").from_("tbl2").sql()
@@ -1366,19 +1558,32 @@ class Query(Expression):
         Args:
             alias: the SQL code string to parse as the table name.
                 If an `Expression` instance is passed, this is used as-is.
+                テーブル「名」として解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             as_: the SQL code string to parse as the table expression.
                 If an `Expression` instance is passed, it will be used as-is.
+                テーブル「式」として解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             recursive: set the RECURSIVE part of the expression. Defaults to `False`.
+                式の RECURSIVE 部分を設定します。デフォルトは `False` です。
             materialized: set the MATERIALIZED part of the expression.
+                式の MATERIALIZED 部分を設定します。
             append: if `True`, add to any existing expressions.
                 Otherwise, this resets the expressions.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、式をリセットします。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             scalar: if `True`, this is a scalar common table expression.
+                `True` の場合、これはスカラー共通テーブル式です。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified expression.
+            変更された式。
         """
         return _apply_cte_builder(
             self,
@@ -1398,6 +1603,7 @@ class Query(Expression):
     ) -> Union:
         """
         Builds a UNION expression.
+        UNION 式を構築します。
 
         Example:
             >>> import sqlglot
@@ -1407,12 +1613,18 @@ class Query(Expression):
         Args:
             expressions: the SQL code strings.
                 If `Expression` instances are passed, they will be used as-is.
+                SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             distinct: set the DISTINCT flag if and only if this is true.
+                これが真の場合にのみ、DISTINCT フラグを設定します。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The new Union expression.
+            新しい Union 式。
         """
         return union(self, *expressions, distinct=distinct, dialect=dialect, **opts)
 
@@ -1421,6 +1633,7 @@ class Query(Expression):
     ) -> Intersect:
         """
         Builds an INTERSECT expression.
+        INTERSECT 式を構築します。
 
         Example:
             >>> import sqlglot
@@ -1430,12 +1643,18 @@ class Query(Expression):
         Args:
             expressions: the SQL code strings.
                 If `Expression` instances are passed, they will be used as-is.
+                SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             distinct: set the DISTINCT flag if and only if this is true.
+                これが真の場合にのみ、DISTINCT フラグを設定します。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The new Intersect expression.
+            新しい Intersect 式。
         """
         return intersect(self, *expressions, distinct=distinct, dialect=dialect, **opts)
 
@@ -1444,6 +1663,7 @@ class Query(Expression):
     ) -> Except:
         """
         Builds an EXCEPT expression.
+        EXCEPT 式を構築します。
 
         Example:
             >>> import sqlglot
@@ -1453,12 +1673,18 @@ class Query(Expression):
         Args:
             expressions: the SQL code strings.
                 If `Expression` instance are passed, they will be used as-is.
+                SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             distinct: set the DISTINCT flag if and only if this is true.
+                これが真の場合にのみ、DISTINCT フラグを設定します。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The new Except expression.
+            新しい Except 式。
         """
         return except_(self, *expressions, distinct=distinct, dialect=dialect, **opts)
 
@@ -1490,13 +1716,15 @@ class Refresh(Expression):
 class DDL(Expression):
     @property
     def ctes(self) -> t.List[CTE]:
-        """Returns a list of all the CTEs attached to this statement."""
+        """Returns a list of all the CTEs attached to this statement.
+        このステートメントに添付されているすべての CTE のリストを返します。"""
         with_ = self.args.get("with_")
         return with_.expressions if with_ else []
 
     @property
     def selects(self) -> t.List[Expression]:
-        """If this statement contains a query (e.g. a CTAS), this returns the query's projections."""
+        """If this statement contains a query (e.g. a CTAS), this returns the query's projections.
+        このステートメントにクエリ (CTAS など) が含まれている場合、クエリの投影が返されます。"""
         return self.expression.selects if isinstance(self.expression, Query) else []
 
     @property
@@ -1504,6 +1732,7 @@ class DDL(Expression):
         """
         If this statement contains a query (e.g. a CTAS), this returns the output
         names of the query's projections.
+        このステートメントにクエリ (CTAS など) が含まれている場合、クエリの投影の出力名が返されます。
         """
         return self.expression.named_selects if isinstance(self.expression, Query) else []
 
@@ -1523,6 +1752,7 @@ class DML(Expression):
     ) -> "Self":
         """
         Set the RETURNING expression. Not supported by all dialects.
+        RETURNING式を設定します。すべての方言でサポートされているわけではありません。
 
         Example:
             >>> delete("tbl").returning("*", dialect="postgres").sql()
@@ -1531,9 +1761,14 @@ class DML(Expression):
         Args:
             expression: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
+                解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             Delete: the modified expression.
@@ -1799,7 +2034,8 @@ class Column(Condition):
 
     @property
     def parts(self) -> t.List[Identifier]:
-        """Return the parts of a column in order catalog, db, table, name."""
+        """Return the parts of a column in order catalog, db, table, name.
+        列の各部分をカタログ、データベース、テーブル、名前の順に返します。"""
         return [
             t.cast(Identifier, self.args[part])
             for part in ("catalog", "db", "table", "this")
@@ -1807,7 +2043,8 @@ class Column(Condition):
         ]
 
     def to_dot(self, include_dots: bool = True) -> Dot | Identifier:
-        """Converts the column into a dot expression."""
+        """Converts the column into a dot expression.
+        列をドット式に変換します。"""
         parts = self.parts
         parent = self.parent
 
@@ -2155,6 +2392,7 @@ class Delete(DML):
     ) -> Delete:
         """
         Create a DELETE expression or replace the table on an existing DELETE expression.
+        DELETE 式を作成するか、既存の DELETE 式のテーブルを置き換えます。
 
         Example:
             >>> delete("tbl").sql()
@@ -2162,12 +2400,17 @@ class Delete(DML):
 
         Args:
             table: the table from which to delete.
+                削除するテーブル。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             Delete: the modified expression.
+            Delete: 変更された式。
         """
         return _apply_builder(
             expression=table,
@@ -2189,6 +2432,7 @@ class Delete(DML):
     ) -> Delete:
         """
         Append to or set the WHERE expressions.
+        WHERE 式に追加または設定します。
 
         Example:
             >>> delete("tbl").where("x = 'a' OR x < 'b'").sql()
@@ -2198,14 +2442,23 @@ class Delete(DML):
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
                 Multiple expressions are combined with an AND operator.
+                解析するSQLコード文字列。
+                `Expression`インスタンスが渡された場合は、そのまま使用されます。
+                複数の式はAND演算子で結合されます。
             append: if `True`, AND the new expressions to any existing expression.
                 Otherwise, this resets the expression.
+                `True` の場合、新しい式と既存の式との AND 演算が行われます。
+                それ以外の場合は、式がリセットされます。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             Delete: the modified expression.
+            Delete: 変更された式。
         """
         return _apply_conjunction_builder(
             *expressions,
@@ -2428,6 +2681,7 @@ class Insert(DDL, DML):
     ) -> Insert:
         """
         Append to or set the common table expressions.
+        共通テーブル式を追加または設定します。
 
         Example:
             >>> insert("SELECT x FROM cte", "t").with_("cte", as_="SELECT * FROM tbl").sql()
@@ -2436,18 +2690,30 @@ class Insert(DDL, DML):
         Args:
             alias: the SQL code string to parse as the table name.
                 If an `Expression` instance is passed, this is used as-is.
+                テーブル名として解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             as_: the SQL code string to parse as the table expression.
                 If an `Expression` instance is passed, it will be used as-is.
+                テーブル式として解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             recursive: set the RECURSIVE part of the expression. Defaults to `False`.
+                式の RECURSIVE 部分を設定します。デフォルトは `False` です。
             materialized: set the MATERIALIZED part of the expression.
+                式の MATERIALIZED 部分を設定します。
             append: if `True`, add to any existing expressions.
                 Otherwise, this resets the expressions.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、式をリセットします。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified expression.
+            変更された式。
         """
         return _apply_cte_builder(
             self,
@@ -2664,6 +2930,7 @@ class Join(Expression):
     ) -> Join:
         """
         Append to or set the ON expressions.
+        ON 式に追加または設定します。
 
         Example:
             >>> import sqlglot
@@ -2674,14 +2941,23 @@ class Join(Expression):
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
                 Multiple expressions are combined with an AND operator.
+                解析するSQLコード文字列。
+                `Expression`インスタンスが渡された場合は、そのまま使用されます。
+                複数の式はAND演算子で結合されます。
             append: if `True`, AND the new expressions to any existing expression.
                 Otherwise, this resets the expression.
+                `True` の場合、新しい式と既存の式との AND 演算が行われます。
+                それ以外の場合は、式がリセットされます。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Join expression.
+            変更された Join 式。
         """
         join = _apply_conjunction_builder(
             *expressions,
@@ -2708,6 +2984,7 @@ class Join(Expression):
     ) -> Join:
         """
         Append to or set the USING expressions.
+        USING 式に追加または設定します。
 
         Example:
             >>> import sqlglot
@@ -2717,14 +2994,22 @@ class Join(Expression):
         Args:
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
+                解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             append: if `True`, concatenate the new expressions to the existing "using" list.
                 Otherwise, this resets the expression.
+                `True` の場合、新しい式を既存の "using" リストに連結します。
+                それ以外の場合は、式をリセットします。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Join expression.
+            変更された Join 式。
         """
         join = _apply_list_builder(
             *expressions,
@@ -3559,7 +3844,8 @@ class Table(Expression):
 
     @property
     def parts(self) -> t.List[Expression]:
-        """Return the parts of a table in order catalog, db, table."""
+        """Return the parts of a table in order catalog, db, table.
+        テーブルの各部分をカタログ、DB、テーブルの順に返します。"""
         parts: t.List[Expression] = []
 
         for arg in ("catalog", "db", "this"):
@@ -3676,6 +3962,7 @@ class Update(DML):
     ) -> Update:
         """
         Set the table to update.
+        更新するテーブルを設定します。
 
         Example:
             >>> Update().table("my_table").set_("x = 1").sql()
@@ -3685,12 +3972,19 @@ class Update(DML):
             expression : the SQL code strings to parse.
                 If a `Table` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `Table`.
+                解析する SQL コード文字列。
+                `Table` インスタンスが渡された場合は、そのまま使用されます。
+                別の `Expression` インスタンスが渡された場合は、`Table` でラップされます。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Update expression.
+            変更された Update 式。
         """
         return _apply_builder(
             expression=expression,
@@ -3713,6 +4007,7 @@ class Update(DML):
     ) -> Update:
         """
         Append to or set the SET expressions.
+        SET 式に追加または設定します。
 
         Example:
             >>> Update().table("my_table").set_("x = 1").sql()
@@ -3722,11 +4017,19 @@ class Update(DML):
             *expressions: the SQL code strings to parse.
                 If `Expression` instance(s) are passed, they will be used as-is.
                 Multiple expressions are combined with a comma.
+                解析するSQLコード文字列。
+                `Expression`インスタンスが渡された場合、それらはそのまま使用されます。
+                複数の式はカンマで区切られます。
             append: if `True`, add the new expressions to any existing SET expressions.
                 Otherwise, this resets the expressions.
+                `True` の場合、新しい式を既存の SET 式に追加します。
+                それ以外の場合は、式がリセットされます。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
         """
         return _apply_list_builder(
             *expressions,
@@ -3750,6 +4053,7 @@ class Update(DML):
     ) -> Select:
         """
         Append to or set the WHERE expressions.
+        WHERE 式に追加または設定します。
 
         Example:
             >>> Update().table("tbl").set_("x = 1").where("x = 'a' OR x < 'b'").sql()
@@ -3759,14 +4063,23 @@ class Update(DML):
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
                 Multiple expressions are combined with an AND operator.
+                解析するSQLコード文字列。
+                `Expression`インスタンスが渡された場合は、そのまま使用されます。
+                複数の式はAND演算子で結合されます。
             append: if `True`, AND the new expressions to any existing expression.
                 Otherwise, this resets the expression.
+                `True` の場合、新しい式と既存の式との AND 演算が行われます。
+                それ以外の場合は、式がリセットされます。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             Select: the modified expression.
+            Select: 変更された式。
         """
         return _apply_conjunction_builder(
             *expressions,
@@ -3788,6 +4101,7 @@ class Update(DML):
     ) -> Update:
         """
         Set the FROM expression.
+        FROM式を設定します。
 
         Example:
             >>> Update().table("my_table").set_("x = 1").from_("baz").sql()
@@ -3798,12 +4112,20 @@ class Update(DML):
                 If a `From` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `From`.
                 If nothing is passed in then a from is not applied to the expression
+                解析するSQLコード文字列。
+                `From`インスタンスが渡された場合は、そのまま使用されます。
+                別の`Expression`インスタンスが渡された場合は、`From`でラップされます。
+                何も渡されなかった場合、式にfromは適用されません。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Update expression.
+            変更された Update 式。
         """
         if not expression:
             return maybe_copy(self, copy)
@@ -3832,6 +4154,7 @@ class Update(DML):
     ) -> Update:
         """
         Append to or set the common table expressions.
+        共通テーブル式を追加または設定します。
 
         Example:
             >>> Update().table("my_table").set_("x = 1").from_("baz").with_("baz", "SELECT id FROM foo").sql()
@@ -3840,18 +4163,30 @@ class Update(DML):
         Args:
             alias: the SQL code string to parse as the table name.
                 If an `Expression` instance is passed, this is used as-is.
+                テーブル名として解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             as_: the SQL code string to parse as the table expression.
                 If an `Expression` instance is passed, it will be used as-is.
+                テーブル式として解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             recursive: set the RECURSIVE part of the expression. Defaults to `False`.
+                式の RECURSIVE 部分を設定します。デフォルトは `False` です。
             materialized: set the MATERIALIZED part of the expression.
+                式の MATERIALIZED 部分を設定します。
             append: if `True`, add to any existing expressions.
                 Otherwise, this resets the expressions.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、式をリセットします。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified expression.
+            変更された式。
         """
         return _apply_cte_builder(
             self,
@@ -3923,6 +4258,7 @@ class Select(Query):
     ) -> Select:
         """
         Set the FROM expression.
+        FROM式を設定します。
 
         Example:
             >>> Select().from_("tbl").select("x").sql()
@@ -3932,12 +4268,19 @@ class Select(Query):
             expression : the SQL code strings to parse.
                 If a `From` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `From`.
+                解析する SQL コード文字列。
+                `From` インスタンスが渡された場合は、そのまま使用されます。
+                別の `Expression` インスタンスが渡された場合は、`From` で囲まれます。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         return _apply_builder(
             expression=expression,
@@ -3960,6 +4303,7 @@ class Select(Query):
     ) -> Select:
         """
         Set the GROUP BY expression.
+        GROUP BY 式を設定します。
 
         Example:
             >>> Select().from_("tbl").select("x", "COUNT(1)").group_by("x").sql()
@@ -3970,14 +4314,24 @@ class Select(Query):
                 If a `Group` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `Group`.
                 If nothing is passed in then a group by is not applied to the expression
+                解析するSQLコード文字列。
+                `Group`インスタンスが渡された場合、そのまま使用されます。
+                別の`Expression`インスタンスが渡された場合、`Group`でラップされます。
+                何も渡されなかった場合、式にはグループ化は適用されません。
             append: if `True`, add to any existing expressions.
                 Otherwise, this flattens all the `Group` expression into a single expression.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、すべての `Group` 式を 1 つの式にフラット化します。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         if not expressions:
             return self if not copy else self.copy()
@@ -4004,6 +4358,7 @@ class Select(Query):
     ) -> Select:
         """
         Set the SORT BY expression.
+        SORT BY 式を設定します。
 
         Example:
             >>> Select().from_("tbl").select("x").sort_by("x DESC").sql(dialect="hive")
@@ -4013,14 +4368,23 @@ class Select(Query):
             *expressions: the SQL code strings to parse.
                 If a `Group` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `SORT`.
+                解析するSQLコード文字列。
+                `Group`インスタンスが渡された場合は、そのまま使用されます。
+                別の`Expression`インスタンスが渡された場合は、`SORT`で囲まれます。
             append: if `True`, add to any existing expressions.
                 Otherwise, this flattens all the `Order` expression into a single expression.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、すべての `Order` 式を 1 つの式にフラット化します。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         return _apply_child_list_builder(
             *expressions,
@@ -4044,6 +4408,7 @@ class Select(Query):
     ) -> Select:
         """
         Set the CLUSTER BY expression.
+        CLUSTER BY 式を設定します。
 
         Example:
             >>> Select().from_("tbl").select("x").cluster_by("x DESC").sql(dialect="hive")
@@ -4053,14 +4418,23 @@ class Select(Query):
             *expressions: the SQL code strings to parse.
                 If a `Group` instance is passed, this is used as-is.
                 If another `Expression` instance is passed, it will be wrapped in a `Cluster`.
+                解析するSQLコード文字列。
+                `Group`インスタンスが渡された場合は、そのまま使用されます。
+                別の`Expression`インスタンスが渡された場合は、`Cluster`でラップされます。
             append: if `True`, add to any existing expressions.
                 Otherwise, this flattens all the `Order` expression into a single expression.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、すべての `Order` 式を 1 つの式にフラット化します。
             dialect: the dialect used to parse the input expression.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         return _apply_child_list_builder(
             *expressions,
@@ -4103,6 +4477,7 @@ class Select(Query):
     ) -> Select:
         """
         Append to or set the LATERAL expressions.
+        LATERAL 式に追加または設定します。
 
         Example:
             >>> Select().select("x").lateral("OUTER explode(y) tbl2 AS z").from_("tbl").sql()
@@ -4111,14 +4486,22 @@ class Select(Query):
         Args:
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
+                解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             append: if `True`, add to any existing expressions.
                 Otherwise, this resets the expressions.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、式をリセットします。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         return _apply_list_builder(
             *expressions,
@@ -4146,6 +4529,7 @@ class Select(Query):
     ) -> Select:
         """
         Append to or set the JOIN expressions.
+        JOIN 式に追加または設定します。
 
         Example:
             >>> Select().select("*").from_("tbl").join("tbl2", on="tbl1.y = tbl2.y").sql()
@@ -4155,6 +4539,7 @@ class Select(Query):
             'SELECT 1 FROM a JOIN b USING (x, y, z)'
 
             Use `join_type` to change the type of join:
+            結合のタイプを変更するには、`join_type` を使用します:
 
             >>> Select().select("*").from_("tbl").join("tbl2", on="tbl1.y = tbl2.y", join_type="left outer").sql()
             'SELECT * FROM tbl LEFT OUTER JOIN tbl2 ON tbl1.y = tbl2.y'
@@ -4162,20 +4547,34 @@ class Select(Query):
         Args:
             expression: the SQL code string to parse.
                 If an `Expression` instance is passed, it will be used as-is.
+                解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             on: optionally specify the join "on" criteria as a SQL string.
                 If an `Expression` instance is passed, it will be used as-is.
+                オプションで、結合の「on」条件を SQL 文字列として指定します。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             using: optionally specify the join "using" criteria as a SQL string.
                 If an `Expression` instance is passed, it will be used as-is.
+                オプションで、結合の「using」条件を SQL 文字列として指定します。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             append: if `True`, add to any existing expressions.
                 Otherwise, this resets the expressions.
+                `True` の場合は、既存の式に追加します。
+                それ以外の場合は、式をリセットします。
             join_type: if set, alter the parsed join type.
+                設定されている場合、解析された結合タイプを変更します。
             join_alias: an optional alias for the joined source.
+                結合されたソースのオプションのエイリアス。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             Select: the modified expression.
+            Select: 変更された式。
         """
         parse_args: t.Dict[str, t.Any] = {"dialect": dialect, **opts}
 
@@ -4240,6 +4639,7 @@ class Select(Query):
     ) -> Select:
         """
         Append to or set the HAVING expressions.
+        HAVING 式に追加または設定します。
 
         Example:
             >>> Select().select("x", "COUNT(y)").from_("tbl").group_by("x").having("COUNT(y) > 3").sql()
@@ -4249,14 +4649,23 @@ class Select(Query):
             *expressions: the SQL code strings to parse.
                 If an `Expression` instance is passed, it will be used as-is.
                 Multiple expressions are combined with an AND operator.
+                解析するSQLコード文字列。
+                `Expression`インスタンスが渡された場合は、そのまま使用されます。
+                複数の式はAND演算子で結合されます。
             append: if `True`, AND the new expressions to any existing expression.
                 Otherwise, this resets the expression.
+                `True` の場合、新しい式と既存の式との AND 演算が行われます。
+                それ以外の場合は、式がリセットされます。
             dialect: the dialect used to parse the input expressions.
+                入力式を解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input expressions.
+                入力式を解析するために使用するその他のオプション。
 
         Returns:
             The modified Select expression.
+            変更された Select 式。
         """
         return _apply_conjunction_builder(
             *expressions,
@@ -4312,6 +4721,7 @@ class Select(Query):
     ) -> Select:
         """
         Set the OFFSET expression.
+        OFFSET式を設定します。
 
         Example:
             >>> Select().from_("tbl").select("x").distinct().sql()
@@ -4319,11 +4729,15 @@ class Select(Query):
 
         Args:
             ons: the expressions to distinct on
+                distinct on する式
             distinct: whether the Select should be distinct
+                Selectが distinct すべきかどうか
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
 
         Returns:
             Select: the modified expression.
+            Select: 変更された式。
         """
         instance = maybe_copy(self, copy)
         on = Tuple(expressions=[maybe_parse(on, copy=copy) for on in ons if on]) if ons else None
@@ -4340,6 +4754,7 @@ class Select(Query):
     ) -> Create:
         """
         Convert this expression to a CREATE TABLE AS statement.
+        この式を CREATE TABLE AS ステートメントに変換します。
 
         Example:
             >>> Select().select("*").from_("tbl").ctas("x").sql()
@@ -4348,13 +4763,20 @@ class Select(Query):
         Args:
             table: the SQL code string to parse as the table name.
                 If another `Expression` instance is passed, it will be used as-is.
+                テーブル名として解析する SQL コード文字列。
+                別の `Expression` インスタンスが渡された場合は、そのまま使用されます。
             properties: an optional mapping of table properties
+                テーブルプロパティのオプションのマッピング
             dialect: the dialect used to parse the input table.
+                入力テーブルを解析するために使用される方言。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
             opts: other options to use to parse the input table.
+                入力テーブルを解析するために使用するその他のオプション。
 
         Returns:
             The new Create expression.
+            新しい Create 式。
         """
         instance = maybe_copy(self, copy)
         table_expression = maybe_parse(table, into=Table, dialect=dialect, **opts)
@@ -4373,6 +4795,7 @@ class Select(Query):
     def lock(self, update: bool = True, copy: bool = True) -> Select:
         """
         Set the locking read mode for this expression.
+        この式のロック読み取りモードを設定します。
 
         Examples:
             >>> Select().select("x").from_("tbl").where("x = 'a'").lock().sql("mysql")
@@ -4383,10 +4806,13 @@ class Select(Query):
 
         Args:
             update: if `True`, the locking type will be `FOR UPDATE`, else it will be `FOR SHARE`.
+                `True` の場合、ロック タイプは `FOR UPDATE` になり、それ以外の場合は `FOR SHARE` になります。
             copy: if `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
 
         Returns:
             The modified expression.
+            変更された式。
         """
         inst = maybe_copy(self, copy)
         inst.set("locks", [Lock(update=update)])
@@ -4396,6 +4822,7 @@ class Select(Query):
     def hint(self, *hints: ExpOrStr, dialect: DialectType = None, copy: bool = True) -> Select:
         """
         Set hints for this expression.
+        この式のヒントを設定します。
 
         Examples:
             >>> Select().select("x").from_("tbl").hint("BROADCAST(y)").sql(dialect="spark")
@@ -4404,11 +4831,16 @@ class Select(Query):
         Args:
             hints: The SQL code strings to parse as the hints.
                 If an `Expression` instance is passed, it will be used as-is.
+                ヒントとして解析する SQL コード文字列。
+                `Expression` インスタンスが渡された場合は、そのまま使用されます。
             dialect: The dialect used to parse the hints.
+                ヒントを解析するために使用される方言。
             copy: If `False`, modify this expression instance in-place.
+                `False` の場合は、この式インスタンスをその場で変更します。
 
         Returns:
             The modified expression.
+            変更された式。
         """
         inst = maybe_copy(self, copy)
         inst.set(
@@ -4449,7 +4881,8 @@ class Subquery(DerivedTable, Query):
     }
 
     def unnest(self):
-        """Returns the first non subquery."""
+        """Returns the first non subquery.
+        最初の非サブクエリを返します。"""
         expression = self
         while isinstance(expression, Subquery):
             expression = expression.this
@@ -4477,6 +4910,7 @@ class Subquery(DerivedTable, Query):
     def is_wrapper(self) -> bool:
         """
         Whether this Subquery acts as a simple wrapper around another expression.
+        このサブクエリが別の式を包む単純なラッパーとして機能するかどうか。
 
         SELECT * FROM (((SELECT * FROM t)))
                       ^
@@ -4508,7 +4942,8 @@ class TableSample(Expression):
 
 
 class Tag(Expression):
-    """Tags are used for generating arbitrary sql like SELECT <span>x</span>."""
+    """Tags are used for generating arbitrary sql like SELECT <span>x</span>.
+    タグは、SELECT <span>x</span> のような任意の SQL を生成するために使用されます。"""
 
     arg_types = {
         "this": False,
@@ -4878,17 +5313,25 @@ class DataType(Expression):
     ) -> DataType:
         """
         Constructs a DataType object.
+        DataType オブジェクトを構築します。
 
         Args:
             dtype: the data type of interest.
+                関心のあるデータ型。
             dialect: the dialect to use for parsing `dtype`, in case it's a string.
+                文字列の場合に `dtype` を解析するために使用する方言。
             udt: when set to True, `dtype` will be used as-is if it can't be parsed into a
                 DataType, thus creating a user-defined type.
+                True に設定すると、`dtype` は DataType に解析できない場合はそのまま使用され、
+                ユーザー定義型が作成されます。
             copy: whether to copy the data type.
+                データ型をコピーするかどうか。
             kwargs: additional arguments to pass in the constructor of DataType.
+                DataType のコンストラクターに渡す追加の引数。
 
         Returns:
             The constructed DataType object.
+            構築された DataType オブジェクト。
         """
         from sqlglot import parse_one
 
@@ -4919,14 +5362,20 @@ class DataType(Expression):
         """
         Checks whether this DataType matches one of the provided data types. Nested types or precision
         will be compared using "structural equivalence" semantics, so e.g. array<int> != array<float>.
+        このDataTypeが指定されたデータ型のいずれかと一致するかどうかを確認します。
+        ネストされた型または精度は、「構造的等価性」セマンティクスを使用して比較されます。
 
         Args:
             dtypes: the data types to compare this DataType to.
+                この DataType と比較するデータ型。
             check_nullable: whether to take the NULLABLE type constructor into account for the comparison.
                 If false, it means that NULLABLE<INT> is equivalent to INT.
+                比較の際に NULLABLE 型コンストラクタを考慮するかどうか。
+                false の場合、NULLABLE<INT> は INT と同等であることを意味します。
 
         Returns:
             True, if and only if there is a type in `dtypes` which is equal to this DataType.
+            `dtypes` にこの DataType と等しい型がある場合にのみ True になります。
         """
         self_is_nullable = self.args.get("nullable")
         for dtype in dtypes:
@@ -5163,7 +5612,8 @@ class Dot(Binary):
 
     @classmethod
     def build(self, expressions: t.Sequence[Expression]) -> Dot:
-        """Build a Dot object with a sequence of expressions."""
+        """Build a Dot object with a sequence of expressions.
+        一連の式を使用して Dot オブジェクトを構築します。"""
         if len(expressions) < 2:
             raise ValueError("Dot requires >= 2 expressions.")
 
@@ -5171,7 +5621,8 @@ class Dot(Binary):
 
     @property
     def parts(self) -> t.List[Expression]:
-        """Return the parts of a table / column in order catalog, db, table."""
+        """Return the parts of a table / column in order catalog, db, table.
+        テーブル/列の部分をカタログ、DB、テーブルの順に返します。"""
         this, *parts = self.flatten()
 
         parts.reverse()
@@ -5243,7 +5694,8 @@ class Is(Binary, Predicate):
 
 
 class Kwarg(Binary):
-    """Kwarg in special functions like func(kwarg => y)."""
+    """Kwarg in special functions like func(kwarg => y).
+    func(kwarg => y) のような特殊関数の Kwarg。"""
 
 
 class Like(Binary, Predicate):
@@ -5362,6 +5814,8 @@ class FromTimeZone(Expression):
 class FormatPhrase(Expression):
     """Format override for a column in Teradata.
     Can be expanded to additional dialects as needed
+    Teradata の列のフォーマットオーバーライド。
+    必要に応じて追加の方言に拡張できます。
 
     https://docs.teradata.com/r/Enterprise_IntelliFlex_VMware/SQL-Data-Types-and-Literals/Data-Type-Formats-and-Format-Phrases/FORMAT
     """
@@ -5412,7 +5866,8 @@ class ForIn(Expression):
 
 
 class TimeUnit(Expression):
-    """Automatically converts unit arg into a var."""
+    """Automatically converts unit arg into a var.
+    ユニット引数を変数に自動的に変換します。"""
 
     arg_types = {"unit": False}
 
@@ -5485,14 +5940,19 @@ class HavingMax(Expression):
 class Func(Condition):
     """
     The base class for all function expressions.
+    すべての関数式の基本クラス。
 
     Attributes:
         is_var_len_args (bool): if set to True the last argument defined in arg_types will be
             treated as a variable length argument and the argument's value will be stored as a list.
+            True に設定すると、arg_types で定義された最後の引数は可変長引数として扱われ、引数の値はリストとして保存されます。
         _sql_names (list): the SQL name (1st item in the list) and aliases (subsequent items) for this
             function expression. These values are used to map this node to a name during parsing as
             well as to provide the function's name during SQL string generation. By default the SQL
             name is set to the expression's class name transformed to snake case.
+            この関数式のSQL名（リストの最初の項目）とエイリアス（後続の項目）です。これらの値は、解析時に
+            このノードを名前にマッピングするために使用され、またSQL文字列生成時に関数名を提供するために使用されます。
+            デフォルトでは、SQL名は式のクラス名をスネークケースに変換したものに設定されます。
     """
 
     is_var_len_args = False
@@ -5908,6 +6368,9 @@ class GenerateSeries(Func):
 # Postgres' GENERATE_SERIES function returns a row set, i.e. it implicitly explodes when it's
 # used in a projection, so this expression is a helper that facilitates transpilation to other
 # dialects. For example, we'd generate UNNEST(GENERATE_SERIES(...)) in DuckDB
+# PostgresのGENERATE_SERIES関数は行セットを返します。つまり、射影で使用すると暗黙的に展開されます。
+# そのため、この式は他の方言へのトランスパイルを容易にするヘルパーです。
+# 例えば、DuckDBではUNNEST(GENERATE_SERIES(...))を生成します。
 class ExplodingGenerateSeries(GenerateSeries):
     pass
 
@@ -5939,6 +6402,7 @@ class ArrayAll(Func):
 
 
 # Represents Python's `any(f(x) for x in array)`, where `array` is `this` and `f` is `expression`
+# Pythonの`any(f(x) for x in array)`を表します。ここで`array`は`this`、`f`は`expression`です。
 class ArrayAny(Func):
     arg_types = {"this": True, "expression": True}
 
@@ -6057,6 +6521,7 @@ class Lead(AggFunc):
 
 # some dialects have a distinction between first and first_value, usually first is an aggregate func
 # and first_value is a window func
+# いくつかの方言では first と first_value を区別しており、通常 first は集計関数で first_value はウィンドウ関数です。
 class First(AggFunc):
     arg_types = {"this": True, "expression": False}
 
@@ -6128,12 +6593,16 @@ class Cast(Func):
         Checks whether this Cast's DataType matches one of the provided data types. Nested types
         like arrays or structs will be compared using "structural equivalence" semantics, so e.g.
         array<int> != array<float>.
+        このキャストのデータ型が指定されたデータ型のいずれかと一致するかどうかを確認します。
+        配列や構造体などのネストされた型は、「構造的等価性」セマンティクスを使用して比較されます。
 
         Args:
             dtypes: the data types to compare this Cast's DataType to.
+                このキャストの DataType と比較するデータ型。
 
         Returns:
             True, if and only if there is a type in `dtypes` which is equal to this Cast's DataType.
+                このキャストの DataType と等しい型が `dtypes` に存在する場合にのみ True になります。
         """
         return self.to.is_type(*dtypes)
 
@@ -6292,6 +6761,7 @@ class DateTrunc(Func):
 
     def __init__(self, **args):
         # Across most dialects it's safe to unabbreviate the unit (e.g. 'Q' -> 'QUARTER') except Oracle
+        # ほとんどの方言では、単位を省略せずにそのまま使用しても安全です（例：「Q」→「QUARTER」）。ただし、Oracle は例外です。
         # https://docs.oracle.com/en/database/oracle/oracle-database/21/sqlrf/ROUND-and-TRUNC-Date-Functions.html
         unabbreviate = args.pop("unabbreviate", True)
 
@@ -7118,6 +7588,8 @@ class ParseNumeric(Func):
 class ParseJSON(Func):
     # BigQuery, Snowflake have PARSE_JSON, Presto has JSON_PARSE
     # Snowflake also has TRY_PARSE_JSON, which is represented using `safe`
+    # BigQuery、SnowflakeにはPARSE_JSONがあり、PrestoにはJSON_PARSEがあります。
+    # SnowflakeにはTRY_PARSE_JSONもあり、これは`safe`を使用して表現されます。
     _sql_names = ["PARSE_JSON", "JSON_PARSE"]
     arg_types = {"this": True, "expression": False, "safe": False}
 
@@ -7265,6 +7737,7 @@ class MD5(Func):
 
 
 # Represents the variant of the MD5 function that returns a binary value
+# バイナリ値を返すMD5関数のバリアントを表します
 class MD5Digest(Func):
     _sql_names = ["MD5_DIGEST"]
 
@@ -7341,6 +7814,7 @@ class MLForecast(Func):
 
 
 # Represents Snowflake's <model>!<attribute> syntax. For example: SELECT model!PREDICT(INPUT_DATA => {*})
+# Snowflakeの<モデル>!<属性>構文を表します。例: SELECT model!PREDICT(INPUT_DATA => {*})
 # See: https://docs.snowflake.com/en/guides-overview-ml-functions
 class ModelAttribute(Expression):
     arg_types = {"this": True, "expression": True}
@@ -8089,6 +8563,7 @@ def maybe_parse(
     **opts,
 ) -> Expression:
     """Gracefully handle a possible string or expression.
+    可能性のある文字列または式を適切に処理します。
 
     Example:
         >>> maybe_parse("1")
@@ -8098,17 +8573,24 @@ def maybe_parse(
 
     Args:
         sql_or_expression: the SQL code string or an expression
+            SQLコード文字列または式
         into: the SQLGlot Expression to parse into
+            解析するSQLGlot式
         dialect: the dialect used to parse the input expressions (in the case that an
             input expression is a SQL string).
+            入力式を解析するために使用される方言 (入力式が SQL 文字列の場合)。
         prefix: a string to prefix the sql with before it gets parsed
             (automatically includes a space)
+            解析前にSQLの先頭に付ける文字列(スペースが自動的に挿入されます)
         copy: whether to copy the expression.
+            式をコピーするかどうか。
         **opts: other options to use to parse the input expressions (again, in the case
             that an input expression is a SQL string).
+            入力式を解析するために使用するその他のオプション (ここでも、入力式が SQL 文字列の場合)。
 
     Returns:
         Expression: the parsed or given expression.
+        Expression: 解析された式または指定された式。
     """
     if isinstance(sql_or_expression, Expression):
         if copy:
@@ -8140,7 +8622,8 @@ def maybe_copy(instance, copy=True):
 
 
 def _to_s(node: t.Any, verbose: bool = False, level: int = 0, repr_str: bool = False) -> str:
-    """Generate a textual representation of an Expression tree"""
+    """Generate a textual representation of an Expression tree
+    式ツリーのテキスト表現を生成する"""
     indent = "\n" + ("  " * (level + 1))
     delim = f",{indent}"
 
@@ -8172,10 +8655,12 @@ def _to_s(node: t.Any, verbose: bool = False, level: int = 0, repr_str: bool = F
         return f"[{items}]"
 
     # We use the representation of the string to avoid stripping out important whitespace
+    # 重要な空白を削除しないように文字列の表現を使用します
     if repr_str and isinstance(node, str):
         node = repr(node)
 
     # Indent multiline strings to match the current level
+    # 複数行の文字列を現在のレベルに合わせてインデントする
     return indent.join(textwrap.dedent(str(node).strip("\n")).splitlines())
 
 
@@ -8329,6 +8814,7 @@ def _apply_cte_builder(
     as_expression = maybe_parse(as_, dialect=dialect, copy=copy, **opts)
     if scalar and not isinstance(as_expression, Subquery):
         # scalar CTE must be wrapped in a subquery
+        # スカラーCTEはサブクエリでラップする必要があります
         as_expression = Subquery(this=as_expression)
     cte = CTE(this=as_expression, alias=alias_expression, materialized=materialized, scalar=scalar)
     return _apply_child_list_builder(
@@ -8400,6 +8886,7 @@ def union(
 ) -> Union:
     """
     Initializes a syntax tree for the `UNION` operation.
+    `UNION` 演算の構文ツリーを初期化します。
 
     Example:
         >>> union("SELECT * FROM foo", "SELECT * FROM bla").sql()
@@ -8408,13 +8895,20 @@ def union(
     Args:
         expressions: the SQL code strings, corresponding to the `UNION`'s operands.
             If `Expression` instances are passed, they will be used as-is.
+            `UNION` のオペランドに対応する SQL コード文字列。
+            `Expression` インスタンスが渡された場合は、そのまま使用されます。
         distinct: set the DISTINCT flag if and only if this is true.
+            これが真の場合にのみ、DISTINCT フラグを設定します。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: whether to copy the expression.
+            式をコピーするかどうか。
         opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         The new Union instance.
+        新しい Union インスタンス。
     """
     assert len(expressions) >= 2, "At least two expressions are required by `union`."
     return _apply_set_operation(
@@ -8431,6 +8925,7 @@ def intersect(
 ) -> Intersect:
     """
     Initializes a syntax tree for the `INTERSECT` operation.
+    `INTERSECT` 演算の構文ツリーを初期化します。
 
     Example:
         >>> intersect("SELECT * FROM foo", "SELECT * FROM bla").sql()
@@ -8439,13 +8934,20 @@ def intersect(
     Args:
         expressions: the SQL code strings, corresponding to the `INTERSECT`'s operands.
             If `Expression` instances are passed, they will be used as-is.
+            `INTERSECT` のオペランドに対応する SQL コード文字列。
+            `Expression` インスタンスが渡された場合は、そのまま使用されます。
         distinct: set the DISTINCT flag if and only if this is true.
+            これが真の場合にのみ、DISTINCT フラグを設定します。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: whether to copy the expression.
+            式をコピーするかどうか。
         opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         The new Intersect instance.
+        新しい Intersect インスタンス。
     """
     assert len(expressions) >= 2, "At least two expressions are required by `intersect`."
     return _apply_set_operation(
@@ -8462,6 +8964,7 @@ def except_(
 ) -> Except:
     """
     Initializes a syntax tree for the `EXCEPT` operation.
+    `EXCEPT` 操作の構文ツリーを初期化します。
 
     Example:
         >>> except_("SELECT * FROM foo", "SELECT * FROM bla").sql()
@@ -8470,10 +8973,16 @@ def except_(
     Args:
         expressions: the SQL code strings, corresponding to the `EXCEPT`'s operands.
             If `Expression` instances are passed, they will be used as-is.
+            `EXCEPT` のオペランドに対応する SQL コード文字列。
+            `Expression` インスタンスが渡された場合は、そのまま使用されます。
         distinct: set the DISTINCT flag if and only if this is true.
+            これが真の場合にのみ、DISTINCT フラグを設定します。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: whether to copy the expression.
+            式をコピーするかどうか。
         opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         The new Except instance.
@@ -8487,6 +8996,7 @@ def except_(
 def select(*expressions: ExpOrStr, dialect: DialectType = None, **opts) -> Select:
     """
     Initializes a syntax tree from one or multiple SELECT expressions.
+    1 つまたは複数の SELECT 式から構文ツリーを初期化します。
 
     Example:
         >>> select("col1", "col2").from_("tbl").sql()
@@ -8495,10 +9005,15 @@ def select(*expressions: ExpOrStr, dialect: DialectType = None, **opts) -> Selec
     Args:
         *expressions: the SQL code string to parse as the expressions of a
             SELECT statement. If an Expression instance is passed, this is used as-is.
+            SELECT文の式として解析するSQLコード文字列。
+            Expressionインスタンスが渡された場合は、そのまま使用されます。
         dialect: the dialect used to parse the input expressions (in the case that an
             input expression is a SQL string).
+            入力式を解析するために使用される方言 (入力式が SQL 文字列の場合)。
         **opts: other options to use to parse the input expressions (again, in the case
             that an input expression is a SQL string).
+            入力式を解析するために使用するその他のオプション 
+            (ここでも、入力式が SQL 文字列の場合)。
 
     Returns:
         Select: the syntax tree for the SELECT statement.
@@ -8509,6 +9024,7 @@ def select(*expressions: ExpOrStr, dialect: DialectType = None, **opts) -> Selec
 def from_(expression: ExpOrStr, dialect: DialectType = None, **opts) -> Select:
     """
     Initializes a syntax tree from a FROM expression.
+    FROM 式から構文ツリーを初期化します。
 
     Example:
         >>> from_("tbl").select("col1", "col2").sql()
@@ -8517,10 +9033,15 @@ def from_(expression: ExpOrStr, dialect: DialectType = None, **opts) -> Select:
     Args:
         *expression: the SQL code string to parse as the FROM expressions of a
             SELECT statement. If an Expression instance is passed, this is used as-is.
+            SELECT文のFROM式として解析するSQLコード文字列。
+            Expressionインスタンスが渡された場合は、そのまま使用されます。
         dialect: the dialect used to parse the input expression (in the case that the
             input expression is a SQL string).
+            入力式を解析するために使用される方言 (入力式が SQL 文字列の場合)。
         **opts: other options to use to parse the input expressions (again, in the case
             that the input expression is a SQL string).
+            入力式を解析するために使用するその他のオプション
+            (ここでも、入力式が SQL 文字列の場合)。
 
     Returns:
         Select: the syntax tree for the SELECT statement.
@@ -8539,6 +9060,7 @@ def update(
 ) -> Update:
     """
     Creates an update statement.
+    Update 文を作成します。
 
     Example:
         >>> update("my_table", {"x": 1, "y": "2", "z": None}, from_="baz_cte", where="baz_cte.id > 1 and my_table.id = baz_cte.id", with_={"baz_cte": "SELECT id FROM foo"}).sql()
@@ -8547,14 +9069,21 @@ def update(
     Args:
         properties: dictionary of properties to SET which are
             auto converted to sql objects eg None -> NULL
+            SET するプロパティの辞書。SQL オブジェクトに自動的に変換されます (例: None -> NULL)
         where: sql conditional parsed into a WHERE statement
+            SQL条件文をWHERE文に解析する
         from_: sql statement parsed into a FROM statement
+            SQL文をFROM文に解析する
         with_: dictionary of CTE aliases / select statements to include in a WITH clause.
+            WITH 句に含める CTE エイリアス / 選択ステートメントの辞書。
         dialect: the dialect used to parse the input expressions.
+            入力式を解析するために使用される方言。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         Update: the syntax tree for the UPDATE statement.
+        Update: UPDATE ステートメントの構文ツリー。
     """
     update_expr = Update(this=maybe_parse(table, into=Table, dialect=dialect))
     if properties:
@@ -8598,6 +9127,7 @@ def delete(
 ) -> Delete:
     """
     Builds a delete statement.
+    delete 文を構築します。
 
     Example:
         >>> delete("my_table", where="id > 1").sql()
@@ -8605,12 +9135,17 @@ def delete(
 
     Args:
         where: sql conditional parsed into a WHERE statement
+            SQL条件文をWHERE文に解析する
         returning: sql conditional parsed into a RETURNING statement
+            SQL条件文をRETURNING文に解析する
         dialect: the dialect used to parse the input expressions.
+            入力式を解析するために使用される方言。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         Delete: the syntax tree for the DELETE statement.
+        Delete: DELETE ステートメントの構文ツリー。
     """
     delete_expr = Delete().delete(table, dialect=dialect, copy=False, **opts)
     if where:
@@ -8632,6 +9167,7 @@ def insert(
 ) -> Insert:
     """
     Builds an INSERT statement.
+    INSERT ステートメントを構築します。
 
     Example:
         >>> insert("VALUES (1, 2, 3)", "tbl").sql()
@@ -8639,16 +9175,25 @@ def insert(
 
     Args:
         expression: the sql string or expression of the INSERT statement
+            INSERT文のSQL文字列または式
         into: the tbl to insert data to.
+            データを挿入するテーブル。
         columns: optionally the table's column names.
+            オプションでテーブルの列名。
         overwrite: whether to INSERT OVERWRITE or not.
+            INSERT OVERWRITE するかどうか。
         returning: sql conditional parsed into a RETURNING statement
+            SQL条件文をRETURNING文に解析する
         dialect: the dialect used to parse the input expressions.
+            入力式を解析するために使用される方言。
         copy: whether to copy the expression.
+            式をコピーするかどうか。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         Insert: the syntax tree for the INSERT statement.
+        Insert: INSERT ステートメントの構文ツリー。
     """
     expr = maybe_parse(expression, dialect=dialect, copy=copy, **opts)
     this: Table | Schema = maybe_parse(into, into=Table, dialect=dialect, copy=copy, **opts)
@@ -8676,6 +9221,7 @@ def merge(
 ) -> Merge:
     """
     Builds a MERGE statement.
+    MERGE ステートメントを構築します。
 
     Example:
         >>> merge("WHEN MATCHED THEN UPDATE SET col1 = source_table.col1",
@@ -8687,16 +9233,25 @@ def merge(
 
     Args:
         *when_exprs: The WHEN clauses specifying actions for matched and unmatched rows.
+            一致した行と一致しない行に対するアクションを指定する WHEN 句。
         into: The target table to merge data into.
+            データをマージするターゲット テーブル。
         using: The source table to merge data from.
+            データをマージするソース テーブル。
         on: The join condition for the merge.
+            マージの結合条件。
         returning: The columns to return from the merge.
+            マージから返される列。
         dialect: The dialect used to parse the input expressions.
+            入力式を解析するために使用される方言。
         copy: Whether to copy the expression.
+            式をコピーするかどうか。
         **opts: Other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         Merge: The syntax tree for the MERGE statement.
+        Merge: MERGE ステートメントの構文ツリー。
     """
     expressions: t.List[Expression] = []
     for when_expr in when_exprs:
@@ -8723,6 +9278,7 @@ def condition(
 ) -> Condition:
     """
     Initialize a logical condition expression.
+    論理条件式を初期化します。
 
     Example:
         >>> condition("x=1").sql()
@@ -8737,11 +9293,17 @@ def condition(
     Args:
         *expression: the SQL code string to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         dialect: the dialect used to parse the input expression (in the case that the
             input expression is a SQL string).
+            入力式を解析するために使用される方言 (入力式が SQL 文字列の場合)。
         copy: Whether to copy `expression` (only applies to expressions).
+            `expression` をコピーするかどうか (式にのみ適用)。
         **opts: other options to use to parse the input expressions (again, in the case
             that the input expression is a SQL string).
+            入力式を解析するために使用するその他のオプション
+             (ここでも、入力式が SQL 文字列の場合)。
 
     Returns:
         The new Condition instance
@@ -8764,6 +9326,7 @@ def and_(
 ) -> Condition:
     """
     Combine multiple conditions with an AND logical operator.
+    AND 論理演算子を使用して複数の条件を組み合わせます。
 
     Example:
         >>> and_("x=1", and_("y=1", "z=1")).sql()
@@ -8772,15 +9335,24 @@ def and_(
     Args:
         *expressions: the SQL code strings to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: whether to copy `expressions` (only applies to Expressions).
+            `expressions` をコピーするかどうか (Expressions にのみ適用)。
         wrap: whether to wrap the operands in `Paren`s. This is true by default to avoid
             precedence issues, but can be turned off when the produced AST is too deep and
             causes recursion-related issues.
+            オペランドを `Paren` で囲むかどうか。
+            優先順位の問題を回避するため、デフォルトでは有効になっていますが、
+            生成される AST が深すぎて再帰関連の問題が発生する場合は無効にすることができます。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         The new condition
+        新しい条件
     """
     return t.cast(Condition, _combine(expressions, And, dialect, copy=copy, wrap=wrap, **opts))
 
@@ -8794,6 +9366,7 @@ def or_(
 ) -> Condition:
     """
     Combine multiple conditions with an OR logical operator.
+    OR 論理演算子を使用して複数の条件を組み合わせます。
 
     Example:
         >>> or_("x=1", or_("y=1", "z=1")).sql()
@@ -8802,15 +9375,24 @@ def or_(
     Args:
         *expressions: the SQL code strings to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: whether to copy `expressions` (only applies to Expressions).
+            `expressions` をコピーするかどうか (Expressions にのみ適用)。
         wrap: whether to wrap the operands in `Paren`s. This is true by default to avoid
             precedence issues, but can be turned off when the produced AST is too deep and
             causes recursion-related issues.
+            オペランドを `Paren` で囲むかどうか。
+            優先順位の問題を回避するため、デフォルトでは有効になっていますが、
+            生成される AST が深すぎて再帰関連の問題が発生する場合は無効にすることができます。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         The new condition
+        新しい条件
     """
     return t.cast(Condition, _combine(expressions, Or, dialect, copy=copy, wrap=wrap, **opts))
 
@@ -8824,6 +9406,7 @@ def xor(
 ) -> Condition:
     """
     Combine multiple conditions with an XOR logical operator.
+    XOR 論理演算子を使用して複数の条件を組み合わせます。
 
     Example:
         >>> xor("x=1", xor("y=1", "z=1")).sql()
@@ -8832,15 +9415,24 @@ def xor(
     Args:
         *expressions: the SQL code strings to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: whether to copy `expressions` (only applies to Expressions).
+            `expressions` をコピーするかどうか (Expressions にのみ適用)。
         wrap: whether to wrap the operands in `Paren`s. This is true by default to avoid
             precedence issues, but can be turned off when the produced AST is too deep and
             causes recursion-related issues.
+            オペランドを `Paren` で囲むかどうか。
+            優先順位の問題を回避するため、デフォルトでは有効になっていますが、
+            生成される AST が深すぎて再帰関連の問題が発生する場合は無効にすることができます。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         The new condition
+        新しい条件
     """
     return t.cast(Condition, _combine(expressions, Xor, dialect, copy=copy, wrap=wrap, **opts))
 
@@ -8848,6 +9440,7 @@ def xor(
 def not_(expression: ExpOrStr, dialect: DialectType = None, copy: bool = True, **opts) -> Not:
     """
     Wrap a condition with a NOT operator.
+    条件を NOT 演算子で囲みます。
 
     Example:
         >>> not_("this_suit='black'").sql()
@@ -8856,12 +9449,18 @@ def not_(expression: ExpOrStr, dialect: DialectType = None, copy: bool = True, *
     Args:
         expression: the SQL code string to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: whether to copy the expression or not.
+            式をコピーするかどうか。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         The new condition.
+        新しい状態。
     """
     this = condition(
         expression,
@@ -8875,6 +9474,7 @@ def not_(expression: ExpOrStr, dialect: DialectType = None, copy: bool = True, *
 def paren(expression: ExpOrStr, copy: bool = True) -> Paren:
     """
     Wrap an expression in parentheses.
+    式を括弧で囲みます。
 
     Example:
         >>> paren("5 + 3").sql()
@@ -8883,10 +9483,14 @@ def paren(expression: ExpOrStr, copy: bool = True) -> Paren:
     Args:
         expression: the SQL code string to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         copy: whether to copy the expression or not.
+            式をコピーするかどうか。
 
     Returns:
         The wrapped expression.
+        包まれた表現。
     """
     return Paren(this=maybe_parse(expression, copy=copy))
 
@@ -8906,14 +9510,19 @@ def to_identifier(
 
 def to_identifier(name, quoted=None, copy=True):
     """Builds an identifier.
+    識別子を構築します。
 
     Args:
         name: The name to turn into an identifier.
+            識別子に変換する名前。
         quoted: Whether to force quote the identifier.
+            識別子を強制的に引用符で囲むかどうか。
         copy: Whether to copy name if it's an Identifier.
+            識別子の場合に名前をコピーするかどうか。
 
     Returns:
         The identifier ast node.
+        識別子の ast ノード。
     """
 
     if name is None:
@@ -8934,13 +9543,17 @@ def to_identifier(name, quoted=None, copy=True):
 def parse_identifier(name: str | Identifier, dialect: DialectType = None) -> Identifier:
     """
     Parses a given string into an identifier.
+    指定された文字列を識別子に解析します。
 
     Args:
         name: The name to parse into an identifier.
+            識別子に解析する名前。
         dialect: The dialect to parse against.
+            解析する対象の方言。
 
     Returns:
         The identifier ast node.
+        識別子の ast ノード。
     """
     try:
         expression = maybe_parse(name, dialect=dialect, into=Identifier)
@@ -8967,7 +9580,8 @@ INTERVAL_DAY_TIME_RE = re.compile(
 
 
 def to_interval(interval: str | Literal) -> Interval:
-    """Builds an interval expression from a string like '1 day' or '5 months'."""
+    """Builds an interval expression from a string like '1 day' or '5 months'.
+    「1 日」や「5 か月」などの文字列から間隔式を構築します。"""
     if isinstance(interval, Literal):
         if not interval.is_string:
             raise ValueError("Invalid interval string.")
@@ -8985,15 +9599,22 @@ def to_table(
     """
     Create a table expression from a `[catalog].[schema].[table]` sql path. Catalog and schema are optional.
     If a table is passed in then that table is returned.
+    `[catalog].[schema].[table]` SQLパスからテーブル式を作成します。カタログとスキーマはオプションです。
+    テーブルが渡された場合は、そのテーブルが返されます。
 
     Args:
         sql_path: a `[catalog].[schema].[table]` string.
+            `[catalog].[schema].[table]` 文字列。
         dialect: the source dialect according to which the table name will be parsed.
+            テーブル名を解析するソース方言。
         copy: Whether to copy a table if it is passed in.
+            テーブルが渡された場合にそれをコピーするかどうか。
         kwargs: the kwargs to instantiate the resulting `Table` expression with.
+            結果の `Table` 式をインスタンス化するための kwargs。
 
     Returns:
         A table expression.
+        テーブル式。
     """
     if isinstance(sql_path, Table):
         return maybe_copy(sql_path, copy=copy)
@@ -9024,16 +9645,24 @@ def to_column(
     """
     Create a column from a `[table].[column]` sql path. Table is optional.
     If a column is passed in then that column is returned.
+    `[table].[column]` SQLパスから列を作成します。テーブルはオプションです。
+    列が渡された場合は、その列が返されます。
 
     Args:
         sql_path: a `[table].[column]` string.
+            `[table].[column]` 文字列。
         quoted: Whether or not to force quote identifiers.
+            引用識別子を強制するかどうか。
         dialect: the source dialect according to which the column name will be parsed.
+            列名を解析するソース方言。
         copy: Whether to copy a column if it is passed in.
+            列が渡された場合にそれをコピーするかどうか。
         kwargs: the kwargs to instantiate the resulting `Column` expression with.
+            結果の `Column` 式をインスタンス化するための kwargs。
 
     Returns:
         A column expression.
+        column 式。
     """
     if isinstance(sql_path, Column):
         return maybe_copy(sql_path, copy=copy)
@@ -9063,6 +9692,7 @@ def alias_(
     **opts,
 ):
     """Create an Alias expression.
+    エイリアス式を作成します。
 
     Example:
         >>> alias_('foo', 'bar').sql()
@@ -9074,16 +9704,25 @@ def alias_(
     Args:
         expression: the SQL code strings to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         alias: the alias name to use. If the name has
             special characters it is quoted.
+            使用するエイリアス名。名前に特殊文字が含まれている場合は引用符で囲みます。
         table: Whether to create a table alias, can also be a list of columns.
+            テーブル別名を作成するかどうか、列のリストにすることもできます。
         quoted: whether to quote the alias
+            エイリアスを引用するかどうか
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         copy: Whether to copy the expression.
+            式をコピーするかどうか。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         Alias: the aliased expression
+        Alias: エイリアス式
     """
     exp = maybe_parse(expression, dialect=dialect, copy=copy, **opts)
     alias = to_identifier(alias, quoted=quoted)
@@ -9101,6 +9740,8 @@ def alias_(
     # We don't set the "alias" arg for Window expressions, because that would add an IDENTIFIER node in
     # the AST, representing a "named_window" [1] construct (eg. bigquery). What we want is an ALIAS node
     # for the complete Window expression.
+    # Window式には「alias」引数を設定しません。これは、ASTに「named_window」[1]構造（例：bigquery）を表す
+    # IDENTIFIERノードを追加してしまうためです。必要なのは、Window式全体に対するALIASノードです。
     #
     # [1]: https://cloud.google.com/bigquery/docs/reference/standard-sql/window-function-calls
 
@@ -9118,6 +9759,7 @@ def subquery(
 ) -> Select:
     """
     Build a subquery expression that's selected from.
+    選択されるサブクエリ式を構築します。
 
     Example:
         >>> subquery('select x from tbl', 'bar').select('x').sql()
@@ -9126,12 +9768,18 @@ def subquery(
     Args:
         expression: the SQL code strings to parse.
             If an Expression instance is passed, this is used as-is.
+            解析する SQL コード文字列。
+            Expression インスタンスが渡された場合は、そのまま使用されます。
         alias: the alias name to use.
+            使用するエイリアス名。
         dialect: the dialect used to parse the input expression.
+            入力式を解析するために使用される方言。
         **opts: other options to use to parse the input expressions.
+            入力式を解析するために使用するその他のオプション。
 
     Returns:
         A new Select instance with the subquery expression included.
+        サブクエリ式が含まれた新しい Select インスタンス。
     """
 
     expression = maybe_parse(expression, dialect=dialect, **opts).subquery(alias, **opts)
@@ -9178,6 +9826,7 @@ def column(
 ):
     """
     Build a Column.
+    カラムを構築します。
 
     Args:
         col: Column name.
@@ -9185,11 +9834,15 @@ def column(
         db: Database name.
         catalog: Catalog name.
         fields: Additional fields using dots.
+            ドットを使用した追加フィールド。
         quoted: Whether to force quotes on the column's identifiers.
+            列の識別子に引用符を強制するかどうか。
         copy: Whether to copy identifiers if passed in.
+            渡された場合に識別子をコピーするかどうか。
 
     Returns:
         The new Column instance.
+        新しい Column インスタンス。
     """
     if not isinstance(col, Star):
         col = to_identifier(col, quoted=quoted, copy=copy)
@@ -9212,6 +9865,7 @@ def cast(
     expression: ExpOrStr, to: DATA_TYPE, copy: bool = True, dialect: DialectType = None, **opts
 ) -> Cast:
     """Cast an expression to a data type.
+    式をデータ型にキャストします。
 
     Example:
         >>> cast('x + 1', 'int').sql()
@@ -9219,26 +9873,39 @@ def cast(
 
     Args:
         expression: The expression to cast.
+            キャストする式。
         to: The datatype to cast to.
+            キャストするデータ型。
         copy: Whether to copy the supplied expressions.
+            指定された式をコピーするかどうか。
         dialect: The target dialect. This is used to prevent a re-cast in the following scenario:
             - The expression to be cast is already a exp.Cast expression
             - The existing cast is to a type that is logically equivalent to new type
+            ターゲット方言。これは、以下のシナリオで再キャストを防止するために使用されます。
+            - キャスト対象の式が既にexp.Cast式である
+            - 既存のキャストが、新しい型と論理的に等価な型である
 
             For example, if :expression='CAST(x as DATETIME)' and :to=Type.TIMESTAMP,
             but in the target dialect DATETIME is mapped to TIMESTAMP, then we will NOT return `CAST(x (as DATETIME) as TIMESTAMP)`
             and instead just return the original expression `CAST(x as DATETIME)`.
+            たとえば、:expression='CAST(x as DATETIME)' かつ :to=Type.TIMESTAMP であるが、
+            ターゲット方言で DATETIME が TIMESTAMP にマップされている場合、
+            `CAST(x (as DATETIME) as TIMESTAMP)` は返されず、代わりに元の式 `CAST(x as DATETIME)` が返されます。
 
             This is to prevent it being output as a double cast `CAST(x (as TIMESTAMP) as TIMESTAMP)` once the DATETIME -> TIMESTAMP
             mapping is applied in the target dialect generator.
+            これは、ターゲット方言ジェネレーターで DATETIME -> TIMESTAMP マッピングが適用されると、
+            二重キャスト `CAST(x (as TIMESTAMP) as TIMESTAMP)` として出力されることを防ぐためです。
 
     Returns:
         The new Cast instance.
+        新しい Cast インスタンス。
     """
     expr = maybe_parse(expression, copy=copy, dialect=dialect, **opts)
     data_type = DataType.build(to, copy=copy, dialect=dialect, **opts)
 
     # dont re-cast if the expression is already a cast to the correct type
+    # 式がすでに正しい型にキャストされている場合は再キャストしないでください
     if isinstance(expr, Cast):
         from sqlglot.dialects.dialect import Dialect
 
@@ -9268,12 +9935,14 @@ def table_(
     alias: t.Optional[Identifier | str] = None,
 ) -> Table:
     """Build a Table.
+    テーブルを構築します。
 
     Args:
         table: Table name.
         db: Database name.
         catalog: Catalog name.
         quote: Whether to force quotes on the table's identifiers.
+            テーブルの識別子に引用符を強制するかどうか。
         alias: Table's alias.
 
     Returns:
@@ -9293,6 +9962,7 @@ def values(
     columns: t.Optional[t.Iterable[str] | t.Dict[str, DataType]] = None,
 ) -> Values:
     """Build VALUES statement.
+    VALUES ステートメントを構築します。
 
     Example:
         >>> values([(1, '2')]).sql()
@@ -9300,12 +9970,17 @@ def values(
 
     Args:
         values: values statements that will be converted to SQL
+            SQLに変換される値ステートメント
         alias: optional alias
+            オプションのエイリアス
         columns: Optional list of ordered column names or ordered dictionary of column names to types.
          If either are provided then an alias is also required.
+            列名を順序付けしたリスト、または列名と型を順序付けした辞書（オプション）。
+            どちらかを指定する場合は、別名も必要です。
 
     Returns:
         Values: the Values expression object
+        Values: 値式オブジェクト
     """
     if columns and not alias:
         raise ValueError("Alias is required when providing columns")
@@ -9322,6 +9997,7 @@ def values(
 
 def var(name: t.Optional[ExpOrStr]) -> Var:
     """Build a SQL variable.
+    SQL 変数を構築します。
 
     Example:
         >>> repr(var('x'))
@@ -9332,9 +10008,11 @@ def var(name: t.Optional[ExpOrStr]) -> Var:
 
     Args:
         name: The name of the var or an expression who's name will become the var.
+            変数の名前、または変数の名前となる式。
 
     Returns:
         The new variable node.
+        新しい変数ノード。
     """
     if not name:
         raise ValueError("Cannot convert empty name into var.")
@@ -9350,6 +10028,7 @@ def rename_table(
     dialect: DialectType = None,
 ) -> Alter:
     """Build ALTER TABLE... RENAME... expression
+    ALTER TABLE... RENAME... 式を構築する
 
     Args:
         old_name: The old name of the table
@@ -9358,6 +10037,7 @@ def rename_table(
 
     Returns:
         Alter table expression
+        テーブルの変更の式
     """
     old_table = to_table(old_name, dialect=dialect)
     new_table = to_table(new_name, dialect=dialect)
@@ -9378,16 +10058,20 @@ def rename_column(
     dialect: DialectType = None,
 ) -> Alter:
     """Build ALTER TABLE... RENAME COLUMN... expression
+    ALTER TABLE... RENAME COLUMN... 式を構築する
 
     Args:
         table_name: Name of the table
         old_column: The old name of the column
         new_column: The new name of the column
         exists: Whether to add the `IF EXISTS` clause
+            `IF EXISTS`句を追加するかどうか
         dialect: The dialect to parse the table/column.
+            テーブル/列を解析する方言。
 
     Returns:
         Alter table expression
+        テーブルの変更の式        
     """
     table = to_table(table_name, dialect=dialect)
     old_column = to_column(old_column_name, dialect=dialect)
@@ -9403,15 +10087,20 @@ def rename_column(
 
 def convert(value: t.Any, copy: bool = False) -> Expression:
     """Convert a python value into an expression object.
+    Python 値を式オブジェクトに変換します。
 
     Raises an error if a conversion is not possible.
+    変換できない場合はエラーが発生します。
 
     Args:
         value: A python object.
+            Python オブジェクト。
         copy: Whether to copy `value` (only applies to Expressions and collections).
+            `value` をコピーするかどうか (式とコレクションにのみ適用されます)。
 
     Returns:
         The equivalent expression object.
+        同等の式オブジェクト。
     """
     if isinstance(value, Expression):
         return maybe_copy(value, copy)
@@ -9432,6 +10121,8 @@ def convert(value: t.Any, copy: bool = False) -> Expression:
         if value.tzinfo:
             # this works for zoneinfo.ZoneInfo, pytz.timezone and datetime.datetime.utc to return IANA timezone names like "America/Los_Angeles"
             # instead of abbreviations like "PDT". This is for consistency with other timezone handling functions in SQLGlot
+            # これは、zoneinfo.ZoneInfo、pytz.timezone、datetime.datetime.utcで動作し、「PDT」のような略語ではなく、
+            # 「America/Los_Angeles」のようなIANAタイムゾーン名を返します。これは、SQLGlotの他のタイムゾーン処理関数との一貫性を保つためです。
             tz = Literal.string(str(value.tzinfo))
 
         return TimeStrToTime(this=datetime_literal, zone=tz)
@@ -9472,6 +10163,7 @@ def convert(value: t.Any, copy: bool = False) -> Expression:
 def replace_children(expression: Expression, fun: t.Callable, *args, **kwargs) -> None:
     """
     Replace children of an expression with the result of a lambda fun(child) -> exp.
+    式の子要素をラムダ fun(child) -> exp の結果に置き換えます。
     """
     for k, v in tuple(expression.args.items()):
         is_list_arg = type(v) is list
@@ -9496,9 +10188,12 @@ def replace_tree(
 ) -> Expression:
     """
     Replace an entire tree with the result of function calls on each node.
+    ツリー全体を各ノードの関数呼び出しの結果で置き換えます。
 
     This will be traversed in reverse dfs, so leaves first.
     If new nodes are created as a result of function calls, they will also be traversed.
+    これは逆方向の dfs で走査されるため、最初に葉が走査されます。
+    関数呼び出しの結果として新しいノードが作成された場合は、それらも走査されます。
     """
     stack = list(expression.dfs(prune=prune))
 
@@ -9518,12 +10213,15 @@ def replace_tree(
 def find_tables(expression: Expression) -> t.Set[Table]:
     """
     Find all tables referenced in a query.
+    クエリで参照されるすべてのテーブルを検索します。
 
     Args:
         expressions: The query to find the tables in.
+            テーブルを検索するためのクエリ。
 
     Returns:
         A set of all the tables.
+        すべてのテーブルのセット。
     """
     from sqlglot.optimizer.scope import traverse_scope
 
@@ -9538,6 +10236,7 @@ def find_tables(expression: Expression) -> t.Set[Table]:
 def column_table_names(expression: Expression, exclude: str = "") -> t.Set[str]:
     """
     Return all table names referenced through columns in an expression.
+    式内の列を通じて参照されるすべてのテーブル名を返します。
 
     Example:
         >>> import sqlglot
@@ -9546,10 +10245,13 @@ def column_table_names(expression: Expression, exclude: str = "") -> t.Set[str]:
 
     Args:
         expression: expression to find table names.
+            テーブル名を検索するための式。
         exclude: a table name to exclude
+            除外するテーブル名
 
     Returns:
         A list of unique names.
+        一意の名前のリスト。
     """
     return {
         table
@@ -9560,13 +10262,19 @@ def column_table_names(expression: Expression, exclude: str = "") -> t.Set[str]:
 
 def table_name(table: Table | str, dialect: DialectType = None, identify: bool = False) -> str:
     """Get the full name of a table as a string.
+    テーブルの完全な名前を文字列として取得します。
 
     Args:
         table: Table expression node or string.
+            テーブル式ノードまたは文字列。
         dialect: The dialect to generate the table name for.
+            テーブル名を生成する方言。
         identify: Determines when an identifier should be quoted. Possible values are:
             False (default): Never quote, except in cases where it's mandatory by the dialect.
             True: Always quote.
+            識別子を引用符で囲むタイミングを決定します。可能な値は次のとおりです。
+            False (デフォルト): 方言で必須の場合を除き、引用符で囲みません。
+            True: 常に引用符で囲みます。
 
     Examples:
         >>> from sqlglot import exp, parse_one
@@ -9575,6 +10283,7 @@ def table_name(table: Table | str, dialect: DialectType = None, identify: bool =
 
     Returns:
         The table name.
+        テーブル名。
     """
 
     table = maybe_parse(table, into=Table, dialect=dialect)
@@ -9594,11 +10303,15 @@ def table_name(table: Table | str, dialect: DialectType = None, identify: bool =
 
 def normalize_table_name(table: str | Table, dialect: DialectType = None, copy: bool = True) -> str:
     """Returns a case normalized table name without quotes.
+    引用符なしで大文字と小文字を正規化したテーブル名を返します。
 
     Args:
         table: the table to normalize
+            正規化するテーブル
         dialect: the dialect to use for normalization rules
+            正規化ルールに使用する方言
         copy: whether to copy the expression.
+            式をコピーするかどうか。
 
     Examples:
         >>> normalize_table_name("`A-B`.c", dialect="bigquery")
@@ -9618,12 +10331,17 @@ def replace_tables(
     expression: E, mapping: t.Dict[str, str], dialect: DialectType = None, copy: bool = True
 ) -> E:
     """Replace all tables in expression according to the mapping.
+    マッピングに従って式内のすべてのテーブルを置き換えます。
 
     Args:
         expression: expression node to be transformed and replaced.
+            変換および置換される式ノード。
         mapping: mapping of table names.
+            テーブル名のマッピング。
         dialect: the dialect of the mapping table
+            テーブルをマッピングする際の方言
         copy: whether to copy the expression.
+            式をコピーするかどうか。
 
     Examples:
         >>> from sqlglot import exp, parse_one
@@ -9632,6 +10350,7 @@ def replace_tables(
 
     Returns:
         The mapped expression.
+        マッピングされた式。
     """
 
     mapping = {normalize_table_name(k, dialect=dialect): v for k, v in mapping.items()}
@@ -9656,11 +10375,15 @@ def replace_tables(
 
 def replace_placeholders(expression: Expression, *args, **kwargs) -> Expression:
     """Replace placeholders in an expression.
+    式内のプレースホルダーを置き換えます。
 
     Args:
         expression: expression node to be transformed and replaced.
+            変換および置換される式ノード。
         args: positional names that will substitute unnamed placeholders in the given order.
+            指定された順序で名前のないプレースホルダーを置き換える位置名。
         kwargs: keyword arguments that will substitute named placeholders.
+            名前付きプレースホルダーを置き換えるキーワード引数。
 
     Examples:
         >>> from sqlglot import exp, parse_one
@@ -9672,6 +10395,7 @@ def replace_placeholders(expression: Expression, *args, **kwargs) -> Expression:
 
     Returns:
         The mapped expression.
+        マッピングされた式。
     """
 
     def _replace_placeholders(node: Expression, args, **kwargs) -> Expression:
@@ -9697,6 +10421,7 @@ def expand(
     copy: bool = True,
 ) -> Expression:
     """Transforms an expression by expanding all referenced sources into subqueries.
+    参照されているすべてのソースをサブクエリに拡張して式を変換します。
 
     Examples:
         >>> from sqlglot import parse_one
@@ -9708,12 +10433,17 @@ def expand(
 
     Args:
         expression: The expression to expand.
+            展開する式。
         sources: A dict of name to query or a callable that provides a query on demand.
+            クエリする名前の辞書、または要求に応じてクエリを提供する呼び出し可能オブジェクト。
         dialect: The dialect of the sources dict or the callable.
+            ソース辞書または呼び出し可能オブジェクトの方言。
         copy: Whether to copy the expression during transformation. Defaults to True.
+            変換中に式をコピーするかどうか。デフォルトは True です。
 
     Returns:
         The transformed expression.
+        変形された式。
     """
     normalized_sources = {normalize_table_name(k, dialect=dialect): v for k, v in sources.items()}
 
@@ -9739,6 +10469,7 @@ def expand(
 def func(name: str, *args, copy: bool = True, dialect: DialectType = None, **kwargs) -> Func:
     """
     Returns a Func expression.
+    Func 式を返します。
 
     Examples:
         >>> func("abs", 5).sql()
@@ -9749,17 +10480,25 @@ def func(name: str, *args, copy: bool = True, dialect: DialectType = None, **kwa
 
     Args:
         name: the name of the function to build.
+            構築する関数の名前。
         args: the args used to instantiate the function of interest.
+            対象の関数をインスタンス化するために使用される引数。
         copy: whether to copy the argument expressions.
+            引数式をコピーするかどうか。
         dialect: the source dialect.
+            ソースの方言。
         kwargs: the kwargs used to instantiate the function of interest.
+            対象の関数をインスタンス化するために使用される kwargs。
 
     Note:
         The arguments `args` and `kwargs` are mutually exclusive.
+        引数 `args` と `kwargs` は相互に排他的です。
 
     Returns:
         An instance of the function of interest, or an anonymous function, if `name` doesn't
         correspond to an existing `sqlglot.expressions.Func` class.
+        対象の関数のインスタンス、または `name` が
+        既存の `sqlglot.expressions.Func` クラスに対応していない場合は匿名関数。
     """
     if args and kwargs:
         raise ValueError("Can't use both args and kwargs to instantiate a function.")
@@ -9805,13 +10544,16 @@ def case(
 ) -> Case:
     """
     Initialize a CASE statement.
+    CASE ステートメントを初期化します。
 
     Example:
         case().when("a = 1", "foo").else_("bar")
 
     Args:
         expression: Optionally, the input expression (not all dialects support this)
+            オプションで入力式（すべての方言がこれをサポートしているわけではありません）
         **opts: Extra keyword arguments for parsing `expression`
+            `expression` を解析するための追加のキーワード引数
     """
     if expression is not None:
         this = maybe_parse(expression, **opts)
@@ -9825,6 +10567,7 @@ def array(
 ) -> Array:
     """
     Returns an array.
+    配列を返します。
 
     Examples:
         >>> array(1, 'x').sql()
@@ -9832,12 +10575,17 @@ def array(
 
     Args:
         expressions: the expressions to add to the array.
+            配列に追加する式。
         copy: whether to copy the argument expressions.
+            引数式をコピーするかどうか。
         dialect: the source dialect.
+            ソースの方言。
         kwargs: the kwargs used to instantiate the function of interest.
+            対象の関数をインスタンス化するために使用される kwargs。
 
     Returns:
         An array expression.
+        配列式。
     """
     return Array(
         expressions=[
@@ -9852,6 +10600,7 @@ def tuple_(
 ) -> Tuple:
     """
     Returns an tuple.
+    タプルを返します。
 
     Examples:
         >>> tuple_(1, 'x').sql()
@@ -9859,12 +10608,17 @@ def tuple_(
 
     Args:
         expressions: the expressions to add to the tuple.
+            タプルに追加する式。
         copy: whether to copy the argument expressions.
+            引数式をコピーするかどうか。
         dialect: the source dialect.
+            ソースの方言。
         kwargs: the kwargs used to instantiate the function of interest.
+            対象の関数をインスタンス化するために使用される kwargs。
 
     Returns:
         A tuple expression.
+        タプル式。
     """
     return Tuple(
         expressions=[
@@ -9877,6 +10631,7 @@ def tuple_(
 def true() -> Boolean:
     """
     Returns a true Boolean expression.
+    真のブール式を返します。
     """
     return Boolean(this=True)
 
@@ -9884,6 +10639,7 @@ def true() -> Boolean:
 def false() -> Boolean:
     """
     Returns a false Boolean expression.
+    偽のブール式を返します。
     """
     return Boolean(this=False)
 
@@ -9891,6 +10647,7 @@ def false() -> Boolean:
 def null() -> Null:
     """
     Returns a Null expression.
+    Null 式を返します。
     """
     return Null()
 

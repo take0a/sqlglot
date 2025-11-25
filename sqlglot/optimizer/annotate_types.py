@@ -41,6 +41,7 @@ def annotate_types(
 ) -> E:
     """
     Infers the types of an expression, annotating its AST accordingly.
+    式の型を推論し、それに応じて AST に注釈を付けます。
 
     Example:
         >>> import sqlglot
@@ -52,13 +53,19 @@ def annotate_types(
 
     Args:
         expression: Expression to annotate.
+            注釈を付ける式。
         schema: Database schema.
+            データベース スキーマ。
         expression_metadata: Maps expression type to corresponding annotation function.
+            式タイプを対応する注釈関数にマッピングします。
         coerces_to: Maps expression type to set of types that it can be coerced into.
+            式の型を、強制変換できる型のセットにマップします。
         overwrite_types: Re-annotate the existing AST types.
+            既存の AST タイプに再度注釈を付けます。
 
     Returns:
         The expression annotated with types.
+        型で注釈が付けられた式。
     """
 
     schema = ensure_schema(schema, dialect=dialect)
@@ -79,6 +86,7 @@ def _coerce_date_literal(l: exp.Expression, unit: t.Optional[exp.Expression]) ->
         return exp.DataType.Type.DATE
 
     # An ISO date is also an ISO datetime, but not vice versa
+    # ISO日付はISO日付時刻でもあるが、その逆はあり得ない。
     if is_iso_date_ or is_iso_datetime(date_text):
         return exp.DataType.Type.DATETIME
 
@@ -108,6 +116,7 @@ class _TypeAnnotator(type):
         klass = super().__new__(cls, clsname, bases, attrs)
 
         # Highest-to-lowest type precedence, as specified in Spark's docs (ANSI):
+        # Spark のドキュメント (ANSI) で指定されている最高から最低の型の優先順位:
         # https://spark.apache.org/docs/3.2.0/sql-ref-ansi-compliance.html
         text_precedence = (
             exp.DataType.Type.TEXT,
@@ -147,10 +156,12 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
     }
 
     # Specifies what types a given type can be coerced into (autofilled)
+    # 特定の型をどの型に強制変換できるかを指定します（自動入力）
     COERCES_TO: t.Dict[exp.DataType.Type, t.Set[exp.DataType.Type]] = {}
 
     # Coercion functions for binary operations.
     # Map of type pairs to a callable that takes both sides of the binary operation and returns the resulting type.
+    # 二項演算のための型変換関数。二項演算の両辺を受け取り、結果の型を返す呼び出し可能オブジェクトへの型ペアのマップ。
     BINARY_COERCIONS: BinaryCoercions = {
         **swap_all(
             {
@@ -198,20 +209,27 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
         self.binary_coercions = binary_coercions or self.BINARY_COERCIONS
 
         # Caches the ids of annotated sub-Expressions, to ensure we only visit them once
+        # 注釈付きサブ式のIDをキャッシュし、一度だけアクセスすることを保証します。
         self._visited: t.Set[int] = set()
 
         # Caches NULL-annotated expressions to set them to UNKNOWN after type inference is completed
+        # NULL アノテーション付きの式をキャッシュし、型推論が完了した後に UNKNOWN に設定します。
         self._null_expressions: t.Dict[int, exp.Expression] = {}
 
         # Databricks and Spark ≥v3 actually support NULL (i.e., VOID) as a type
+        # DatabricksとSpark ≥v3は実際にはNULL（つまりVOID）を型としてサポートしています
         self._supports_null_type = schema.dialect in ("databricks", "spark")
 
         # Maps an exp.SetOperation's id (e.g. UNION) to its projection types. This is computed if the
         # exp.SetOperation is the expression of a scope source, as selecting from it multiple times
         # would reprocess the entire subtree to coerce the types of its operands' projections
+        # exp.SetOperation の ID（例：UNION）をその射影型にマッピングします。
+        # これは、exp.SetOperation がスコープソースの式である場合に計算されます。
+        # 複数回選択すると、サブツリー全体が再処理され、オペランドの射影の型が強制的に変換されるためです。
         self._setop_column_types: t.Dict[int, t.Dict[str, exp.DataType | exp.DataType.Type]] = {}
 
         # When set to False, this enables partial annotation by skipping already-annotated nodes
+        # Falseに設定すると、すでに注釈が付けられたノードをスキップして部分的な注釈付けが可能になります。
         self._overwrite_types = overwrite_types
 
     def clear(self) -> None:
@@ -242,6 +260,7 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
             and (dot_parts := expression.meta.get("dot_parts"))
         ):
             # JSON dot access is case sensitive across all dialects, so we need to undo the normalization.
+            # JSON ドット アクセスはすべての方言で大文字と小文字が区別されるため、正規化を元に戻す必要があります。
             i = iter(dot_parts)
             parent = expression.parent
             while isinstance(parent, exp.Dot):
@@ -253,15 +272,20 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
     def annotate(self, expression: E, annotate_scope: bool = True) -> E:
         # This flag is used to avoid costly scope traversals when we only care about annotating
         # non-column expressions (partial type inference), e.g., when simplifying in the optimizer
+        # このフラグは、非列式（部分型推論）の注釈付けのみを気にする場合、例えばオプティマイザで
+        # 単純化する場合など、コストのかかるスコープトラバーサルを回避するために使用されます。
         if annotate_scope:
             for scope in traverse_scope(expression):
                 self.annotate_scope(scope)
 
         # This takes care of non-traversable expressions
+        # これは、トラバース不可能な式を処理する。
         expression = self._maybe_annotate(expression)
 
         # Replace NULL type with UNKNOWN, since the former is not an actual type;
         # it is mostly used to aid type coercion, e.g. in query set operations.
+        # NULL 型は実際の型ではないため、UNKNOWN に置き換えます。これは主に、
+        # クエリ セット操作などで型の強制変換を支援するために使用されます。
         for expr in self._null_expressions.values():
             expr.type = exp.DataType.Type.UNKNOWN
 
@@ -299,6 +323,7 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
 
                 if not col_types:
                     # Process a chain / sub-tree of set operations
+                    # 集合演算のチェーン/サブツリーを処理する
                     for set_op in expression.walk(
                         prune=lambda n: not isinstance(n, (exp.SetOperation, exp.Subquery))
                     ):
@@ -326,6 +351,7 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
                             }
 
                         # Coerce intermediate results with the previously registered types, if they exist
+                        # 以前に登録された型が存在する場合は、中間結果をその型で強制変換します。
                         for col_name, col_type in setop_cols.items():
                             col_types[col_name] = self._maybe_coerce(
                                 col_type, col_types.get(col_name, exp.DataType.Type.NULL)
@@ -335,6 +361,7 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
                 selects[name] = {s.alias_or_name: s.type for s in expression.selects}
 
         # First annotate the current scope's column references
+        # まず現在のスコープの列参照に注釈を付けます
         for col in scope.columns:
             if not col.table:
                 continue
@@ -381,6 +408,7 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
                     self._set_type(table_column, source.expression.meta["query_type"])
 
         # Then (possibly) annotate the remaining expressions in the scope
+        # 次に、スコープ内の残りの式に注釈を付ける（可能であれば）
         self._maybe_annotate(scope.expression)
 
         if self.schema.dialect == "bigquery" and isinstance(scope.expression, exp.Query):
@@ -404,6 +432,9 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
                 # We don't use `_set_type` on purpose here. If we annotated the query directly, then
                 # using it in other contexts (e.g., ARRAY(<query>)) could result in incorrect type
                 # annotations, i.e., it shouldn't be interpreted as a STRUCT value.
+                # ここでは意図的に `_set_type` は使用していません。クエリに直接アノテーションを付けた場合、
+                # 他のコンテキスト（例：ARRAY(<query>)）で使用すると、誤った型アノテーションが生成される
+                # 可能性があります。つまり、STRUCT 値として解釈されるべきではありません。
                 scope.expression.meta["query_type"] = struct_type
 
     def _maybe_annotate(self, expression: E) -> E:
@@ -439,9 +470,12 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
     ) -> exp.DataType | exp.DataType.Type:
         """
         Returns type2 if type1 can be coerced into it, otherwise type1.
+        type1 を強制変換できる場合は type2 を返し、そうでない場合は type1 を返します。
 
         If either type is parameterized (e.g. DECIMAL(18, 2) contains two parameters),
         we assume type1 does not coerce into type2, so we also return it in this case.
+        どちらかの型がパラメータ化されている場合（たとえば、DECIMAL(18, 2) には 2 つのパラメータが含まれています）、
+        type1 は type2 に強制変換されないと想定されるため、この場合も type1 を返します。
         """
         if isinstance(type1, exp.DataType):
             if type1.expressions:
@@ -458,6 +492,7 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
             type2_value = type2
 
         # We propagate the UNKNOWN type upwards if found
+        # 見つかった場合はUNKNOWN型を上方に伝播します
         if exp.DataType.Type.UNKNOWN in (type1_value, type2_value):
             return exp.DataType.Type.UNKNOWN
 
@@ -545,6 +580,7 @@ class TypeAnnotator(metaclass=_TypeAnnotator):
             expr_type = expr.type
 
             # Stop at the first nested data type found - we don't want to _maybe_coerce nested types
+            # 最初に見つかったネストされたデータ型で停止します。ネストされた型を強制的に変換する必要はありません。
             if expr_type.args.get("nested"):
                 last_datatype = expr_type
                 break

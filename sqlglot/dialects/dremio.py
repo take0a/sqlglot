@@ -24,6 +24,7 @@ def _date_delta_sql(name: str) -> t.Callable[[Dremio.Generator, DATE_DELTA], str
         unit = expression.text("unit").upper()
 
         # Fallback to default behavior if unit is missing or 'DAY'
+        # 単位が指定されていない場合、または「DAY」の場合はデフォルトの動作にフォールバックします
         if not unit or unit == "DAY":
             return self.func(name, expression.this, expression.expression)
 
@@ -42,6 +43,7 @@ def to_char_is_numeric_handler(args: t.List, dialect: DialectType) -> exp.TimeTo
 
     if fmt and isinstance(expression, exp.ToChar) and fmt.is_string and "#" in fmt.name:
         # Only mark as numeric if format is a literal containing #
+        # フォーマットが # を含むリテラルの場合のみ数値としてマークします
         expression.set("is_numeric", True)
 
     return expression

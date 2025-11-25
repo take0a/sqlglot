@@ -81,17 +81,27 @@ def lineage(
 
     Args:
         column: The column to build the lineage for.
+            系図を構築する列。
         sql: The SQL string or expression.
+            SQL 文字列または式。
         schema: The schema of tables.
+            テーブルのスキーマ。
         sources: A mapping of queries which will be used to continue building lineage.
+            系統の構築を継続するために使用されるクエリのマッピング。
         dialect: The dialect of input SQL.
+            入力 SQL の方言。
         scope: A pre-created scope to use instead.
+            代わりに使用する事前作成されたスコープ。
         trim_selects: Whether to clean up selects by trimming to only relevant columns.
+            関連する列のみにトリミングして選択をクリーンアップするかどうか。
         copy: Whether to copy the Expression arguments.
+            式の引数をコピーするかどうか。
         **kwargs: Qualification optimizer kwargs.
+            資格最適化ツールの kwargs。
 
     Returns:
         A lineage node.
+        系統ノード。
     """
 
     expression = maybe_parse(sql, copy=copy, dialect=dialect)

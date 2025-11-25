@@ -47,10 +47,13 @@ from sqlglot.parser import binary_range_parser
 
 # Regex to detect time zones in timestamps of the form [+|-]TT[:tt]
 # The pattern matches timezone offsets that appear after the time portion
+# [+|-]TT[:tt]形式のタイムスタンプ内のタイムゾーンを検出するための正規表現
+# このパターンは、時刻部分の後に続くタイムゾーンオフセットに一致します
 TIMEZONE_PATTERN = re.compile(r":\d{2}.*?[+\-]\d{2}(?::\d{2})?")
 
 
 # BigQuery -> DuckDB conversion for the DATE function
+# DATE関数のBigQuery -> DuckDB変換
 def _date_sql(self: DuckDB.Generator, expression: exp.Date) -> str:
     result = f"CAST({self.sql(expression, 'this')} AS DATE)"
     zone = self.sql(expression, "zone")
@@ -60,18 +63,22 @@ def _date_sql(self: DuckDB.Generator, expression: exp.Date) -> str:
         date_str = f"{date_str} || ' ' || {zone}"
 
         # This will create a TIMESTAMP with time zone information
+        # これにより、タイムゾーン情報を含むTIMESTAMPが作成されます。
         result = self.func("STRPTIME", date_str, "'%d/%m/%Y %Z'")
 
     return result
 
 
 # BigQuery -> DuckDB conversion for the TIME_DIFF function
+# TIME_DIFF関数のBigQuery -> DuckDB変換
 def _timediff_sql(self: DuckDB.Generator, expression: exp.TimeDiff) -> str:
     this = exp.cast(expression.this, exp.DataType.Type.TIME)
     expr = exp.cast(expression.expression, exp.DataType.Type.TIME)
 
     # Although the 2 dialects share similar signatures, BQ seems to inverse
     # the sign of the result so the start/end time operands are flipped
+    # 2つの方言は同様のシグネチャを共有していますが、BQは結果の符号を反転するため、
+    # 開始/終了時間のオペランドが反転されます。
     return self.func("DATE_DIFF", unit_to_str(expression), expr, this)
 
 
@@ -98,6 +105,7 @@ def _build_generate_series(end_exclusive: bool = False) -> t.Callable[[t.List], 
         # Check https://duckdb.org/docs/sql/functions/nested.html#range-functions
         if len(args) == 1:
             # DuckDB uses 0 as a default for the series' start when it's omitted
+            # DuckDBは、省略された場合、シリーズの開始のデフォルトとして0を使用します。
             args.insert(0, exp.Literal.number("0"))
 
         gen_series = exp.GenerateSeries.from_arg_list(args)
@@ -137,6 +145,11 @@ def _struct_sql(self: DuckDB.Generator, expression: exp.Struct) -> str:
     # The transformation to ROW will take place if:
     #  1. The STRUCT itself does not have proper fields (key := value) as a "proper" STRUCT would
     #  2. A cast to STRUCT / ARRAY of STRUCTs is found
+    # BigQueryでは、「STRUCT<a STRING, b INTEGER>('str', 1)」のようなインライン構築が可能です。
+    # これはDuckDBでは「ROW('str', 1) AS STRUCT(a TE​​XT, b INT)」に正規化されます。
+    # ROWへの変換は、以下の場合に行われます。
+    #  1. STRUCT自体に、「適切な」STRUCTが持つべき適切なフィールド（キー:=値）がない場合
+    #  2. STRUCTまたはSTRUCTのARRAYへのキャストが見つかった場合
     ancestor_cast = expression.find_ancestor(exp.Cast)
     is_bq_inline_struct = (
         (expression.find(exp.PropertyEQ) is None)
@@ -174,6 +187,7 @@ def _datatype_sql(self: DuckDB.Generator, expression: exp.DataType) -> str:
         return f"{self.expressions(expression, flat=True)}[{self.expressions(expression, key='values', flat=True)}]"
 
     # Modifiers are not supported for TIME, [TIME | TIMESTAMP] WITH TIME ZONE
+    # TIME、[TIME | TIMESTAMP] WITH TIME ZONE では修飾子はサポートされていません。
     if expression.is_type(
         exp.DataType.Type.TIME, exp.DataType.Type.TIMETZ, exp.DataType.Type.TIMESTAMPTZ
     ):
@@ -247,6 +261,7 @@ def _generate_datetime_array_sql(
     end = _implicit_datetime_cast(expression.args.get("end"), type=type)
 
     # BQ's GENERATE_DATE_ARRAY & GENERATE_TIMESTAMP_ARRAY are transformed to DuckDB'S GENERATE_SERIES
+    # BQのGENERATE_DATE_ARRAYとGENERATE_TIMESTAMP_ARRAYはDuckDBのGENERATE_SERIESに変換されます。
     gen_series: t.Union[exp.GenerateSeries, exp.Cast] = exp.GenerateSeries(
         start=start, end=end, step=expression.args.get("step")
     )
@@ -254,6 +269,8 @@ def _generate_datetime_array_sql(
     if is_generate_date_array:
         # The GENERATE_SERIES result type is TIMESTAMP array, so to match BQ's semantics for
         # GENERATE_DATE_ARRAY we must cast it back to DATE array
+        # GENERATE_SERIESの結果型はTIMESTAMP配列なので、BQのGENERATE_DATE_ARRAYのセマンティクスと
+        # 一致させるには、DATE配列にキャストし直す必要があります。
         gen_series = exp.cast(gen_series, exp.DataType.build("ARRAY<DATE>"))
 
     return self.sql(gen_series)
@@ -283,6 +300,7 @@ def _cast_to_blob(self: DuckDB.Generator, expression: exp.Expression, result_sql
 
 def _anyvalue_sql(self: DuckDB.Generator, expression: exp.AnyValue) -> str:
     # Transform ANY_VALUE(expr HAVING MAX/MIN having_expr) to ARG_MAX_NULL/ARG_MIN_NULL
+    # ANY_VALUE(expr HAVING MAX/MIN having_expr)をARG_MAX_NULL/ARG_MIN_NULLに変換する
     having = expression.this
     if isinstance(having, exp.HavingMax):
         func_name = "ARG_MAX_NULL" if having.args.get("max") else "ARG_MIN_NULL"
@@ -316,6 +334,11 @@ class DuckDB(Dialect):
             # Additionally, it allows accessing the back of lists using the `[#-i]` syntax.
             # This check ensures we'll avoid trying to parse these as JSON paths, which can
             # either result in a noisy warning or in an invalid representation of the path.
+            # DuckDB は、すべてのパスが `/` で始まる JSON ポインタ構文もサポートしています。
+            # さらに、`[#-i]` 構文を使用してリストの末尾にアクセスすることもできます。
+            # このチェックにより、これらを JSON パスとして解析しようとする試みを回避できます。
+            # JSON パスとして解析すると、ノイズの多い警告が表示されたり、パスが無効な表現に
+            # なったりする可能性があります。
             path_text = path.name
             if path_text.startswith("/") or "[#" in path_text:
                 return path
@@ -654,6 +677,8 @@ class DuckDB(Dialect):
         def _parse_force(self) -> exp.Install | exp.Command:
             # FORCE can only be followed by INSTALL or CHECKPOINT
             # In the case of CHECKPOINT, we fallback
+            # FORCE の後には INSTALL または CHECKPOINT のみ実行できます。
+            # CHECKPOINT の場合はフォールバックします
             if not self._match(TokenType.INSTALL):
                 return self._parse_as_command(self._prev)
 
@@ -776,6 +801,7 @@ class DuckDB(Dialect):
             exp.PercentileCont: rename_func("QUANTILE_CONT"),
             exp.PercentileDisc: rename_func("QUANTILE_DISC"),
             # DuckDB doesn't allow qualified columns inside of PIVOT expressions.
+            # DuckDB では、PIVOT 式内で修飾された列は許可されません。
             # See: https://github.com/duckdb/duckdb/blob/671faf92411182f81dce42ac43de8bfb05d9909e/src/planner/binder/tableref/bind_pivot.cpp#L61-L62
             exp.Pivot: transforms.preprocess([transforms.unqualify_columns]),
             exp.RegexpReplace: lambda self, e: self.func(
@@ -966,6 +992,7 @@ class DuckDB(Dialect):
         UNWRAPPED_INTERVAL_VALUES = (exp.Literal, exp.Paren)
 
         # DuckDB doesn't generally support CREATE TABLE .. properties
+        # DuckDBは一般的にCREATE TABLE ..プロパティをサポートしていません
         # https://duckdb.org/docs/sql/statements/create_table.html
         PROPERTIES_LOCATION = {
             prop: exp.Properties.Location.UNSUPPORTED
@@ -974,6 +1001,8 @@ class DuckDB(Dialect):
 
         # There are a few exceptions (e.g. temporary tables) which are supported or
         # can be transpiled to DuckDB, so we explicitly override them accordingly
+        # いくつかの例外（一時テーブルなど）はDuckDBにサポートされているか、
+        # トランスパイルできるため、それに応じて明示的にオーバーライドします。
         PROPERTIES_LOCATION[exp.LikeProperty] = exp.Properties.Location.POST_SCHEMA
         PROPERTIES_LOCATION[exp.TemporaryProperty] = exp.Properties.Location.POST_CREATE
         PROPERTIES_LOCATION[exp.ReturnsProperty] = exp.Properties.Location.POST_ALIAS
@@ -1073,6 +1102,7 @@ class DuckDB(Dialect):
         ) -> str:
             if not isinstance(expression.parent, exp.Select):
                 # This sample clause only applies to a single source, not the entire resulting relation
+                # このサンプル句は、結果の関係全体ではなく、単一のソースにのみ適用されます。
                 tablesample_keyword = "TABLESAMPLE"
 
             if expression.args.get("size"):
@@ -1100,6 +1130,8 @@ class DuckDB(Dialect):
             ):
                 # Some dialects support `LEFT/INNER JOIN UNNEST(...)` without an explicit ON clause
                 # DuckDB doesn't, but we can just add a dummy ON clause that is always true
+                # いくつかの方言は、明示的なON句なしで `LEFT/INNER JOIN UNNEST(...)` をサポートしますが、
+                # DuckDBはサポートしません。ただし、常に真となるダミーのON句を追加するだけで済みます。
                 if isinstance(expression.this, exp.Unnest):
                     return super().join_sql(expression.on(exp.true()))
 
@@ -1150,6 +1182,7 @@ class DuckDB(Dialect):
             func = expression.this
             if isinstance(func, exp.PERCENTILES):
                 # Make the order key the first arg and slide the fraction to the right
+                # 順序キーを最初の引数にして、分数を右にスライドします
                 # https://duckdb.org/docs/sql/aggregates#ordered-set-aggregate-functions
                 order_col = expression.find(exp.Ordered)
                 if order_col:
@@ -1165,6 +1198,8 @@ class DuckDB(Dialect):
 
             # Dialects like BQ and Snowflake also accept binary values as args, so
             # DDB will attempt to infer the type or resort to case/when resolution
+            # BQやSnowflakeのような方言もバイナリ値を引数として受け入れるので、
+            # DDBは型を推測するかcase/when解決に頼ろうとします。
             if not expression.args.get("binary") or arg.is_string:
                 return self.func("LENGTH", arg)
 
@@ -1177,6 +1212,7 @@ class DuckDB(Dialect):
                 return self.func("LENGTH", arg)
 
             # We need these casts to make duckdb's static type checker happy
+            # duckdbの静的型チェッカーを動作させるにはこれらのキャストが必要です
             blob = exp.cast(arg, exp.DataType.Type.VARBINARY)
             varchar = exp.cast(arg, exp.DataType.Type.VARCHAR)
 
@@ -1186,6 +1222,7 @@ class DuckDB(Dialect):
                 .else_(
                     exp.Anonymous(this="LENGTH", expressions=[varchar])
                 )  # anonymous to break length_sql recursion
+                   # length_sqlの再帰を中断する匿名
             )
 
             return self.sql(case)
@@ -1217,6 +1254,8 @@ class DuckDB(Dialect):
 
             # If the input struct is empty e.g. transpiling OBJECT_INSERT(OBJECT_CONSTRUCT(), key, value) from Snowflake
             # then we can generate STRUCT_PACK which will build it since STRUCT_INSERT({}, key := value) is not valid DuckDB
+            # 入力構造体が空の場合、例えばSnowflakeからOBJECT_INSERT(OBJECT_CONSTRUCT(), key, value)をトランスパイルすると、
+            # STRUCT_INSERT({}, key := value)はDuckDBでは有効ではないため、STRUCT_PACKを生成して構築することができます。
             if isinstance(this, exp.Struct) and not this.expressions:
                 return self.func("STRUCT_PACK", kv_sql)
 
@@ -1234,11 +1273,14 @@ class DuckDB(Dialect):
             if explode_array:
                 # In BigQuery, UNNESTing a nested array leads to explosion of the top-level array & struct
                 # This is transpiled to DDB by transforming "FROM UNNEST(...)" to "FROM (SELECT UNNEST(..., max_depth => 2))"
+                # BigQuery では、ネストされた配列を UNNEST すると、最上位の配列と構造体が爆発的に増加します。これは、
+                # 「FROM UNNEST(...)」を「FROM (SELECT UNNEST(..., max_depth => 2))」に変換することで DDB にトランスパイルされます。
                 expression.expressions.append(
                     exp.Kwarg(this=exp.var("max_depth"), expression=exp.Literal.number(2))
                 )
 
                 # If BQ's UNNEST is aliased, we transform it from a column alias to a table alias in DDB
+                # BQのUNNESTに別名が付けられている場合は、それを列別名からDDBのテーブル別名に変換します。
                 alias = expression.args.get("alias")
                 if isinstance(alias, exp.TableAlias):
                     expression.set("alias", None)
@@ -1257,6 +1299,8 @@ class DuckDB(Dialect):
             if isinstance(this, self.IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS):
                 # DuckDB should render IGNORE NULLS only for the general-purpose
                 # window functions that accept it e.g. FIRST_VALUE(... IGNORE NULLS) OVER (...)
+                # DuckDB は、IGNORE NULLS を受け入れる汎用ウィンドウ関数に対してのみ、
+                # IGNORE NULLS をレンダリングする必要があります。例: FIRST_VALUE(... IGNORE NULLS) OVER (...)
                 return super().ignorenulls_sql(expression)
 
             if isinstance(this, exp.First):
@@ -1271,6 +1315,8 @@ class DuckDB(Dialect):
             if isinstance(expression.this, self.IGNORE_RESPECT_NULLS_WINDOW_FUNCTIONS):
                 # DuckDB should render RESPECT NULLS only for the general-purpose
                 # window functions that accept it e.g. FIRST_VALUE(... RESPECT NULLS) OVER (...)
+                # DuckDB は、RESPECT NULLS を受け入れる汎用ウィンドウ関数に対してのみ、RESPECT NULLS を
+                # レンダリングする必要があります。例: FIRST_VALUE(... RESPECT NULLS) OVER (...)
                 return super().respectnulls_sql(expression)
 
             self.unsupported("RESPECT NULLS is not supported for non-window functions.")
@@ -1296,6 +1342,7 @@ class DuckDB(Dialect):
 
             # Do not render group if there is no following argument,
             # and it's the default value for this dialect
+            # 後続の引数がない場合、グループをレンダリングしません。これはこの方言のデフォルト値です。
             if (
                 not params
                 and group
@@ -1337,6 +1384,7 @@ class DuckDB(Dialect):
             parent = expression.parent
 
             # The default Spark aliases are "pos" and "col", unless specified otherwise
+            # 別途指定がない限り、デフォルトのSparkエイリアスは「pos」と「col」です。
             pos, col = exp.to_identifier("pos"), exp.to_identifier("col")
 
             if isinstance(parent, exp.Aliases):
@@ -1351,6 +1399,9 @@ class DuckDB(Dialect):
 
             # Translate POSEXPLODE to UNNEST + GENERATE_SUBSCRIPTS
             # Note: In Spark pos is 0-indexed, but in DuckDB it's 1-indexed, so we subtract 1 from GENERATE_SUBSCRIPTS
+            # POSEXPLODE を UNNEST + GENERATE_SUBSCRIPTS に変換します。
+            # 注: Spark では pos は 0 からインデックス付けされますが、DuckDB では 1 からインデックス付けされるため、
+            # GENERATE_SUBSCRIPTS から 1 を引きます。
             unnest_sql = self.sql(exp.Unnest(expressions=[this], alias=col))
             gen_subscripts = self.sql(
                 exp.Alias(
@@ -1389,6 +1440,10 @@ class DuckDB(Dialect):
             # To match for example Snowflake's ADD_MONTHS behavior (which preserves the input type)
             # We need to cast the result back to the original type when the input is DATE or TIMESTAMPTZ
             # Example: ADD_MONTHS('2023-01-31'::date, 1) should return DATE, not TIMESTAMP
+            # DuckDBのDATE_ADD関数は、入力がDATEであっても、デフォルトでTIMESTAMP/DATETIMEを返します。
+            # 例えば、SnowflakeのADD_MONTHSの動作（入力の型を保持する）と一致させるため。
+            # 入力がDATEまたはTIMESTAMPTZの場合、結果を元の型にキャストする必要があります。
+            # 例: ADD_MONTHS('2023-01-31'::date, 1) は、TIMESTAMPではなくDATEを返す必要があります。
             if this.is_type(exp.DataType.Type.DATE, exp.DataType.Type.TIMESTAMPTZ):
                 return self.sql(exp.Cast(this=func, to=this.type))
 
@@ -1410,6 +1465,8 @@ class DuckDB(Dialect):
 
             # `from_hex` has transpiled x'ABCD' (BINARY) to DuckDB's '\xAB\xCD' (BINARY)
             # `to_hex` & CASTing transforms it to "ABCD" (BINARY) to match representation
+            # `from_hex` は x'ABCD' (BINARY) を DuckDB の '\xAB\xCD' (BINARY) にトランスパイルしました。
+            # `to_hex` と CAST により、表現を一致させるために "ABCD" (BINARY) に変換されます。
             to_hex = exp.cast(self.func("TO_HEX", from_hex), exp.DataType.Type.BLOB)
 
             return self.sql(to_hex)
@@ -1424,6 +1481,10 @@ class DuckDB(Dialect):
                 # Double AT TIME ZONE needed for BigQuery compatibility:
                 # 1. First AT TIME ZONE: ensures truncation happens in the target timezone
                 # 2. Second AT TIME ZONE: converts the DATE result back to TIMESTAMPTZ (preserving time component)
+                # BigQuery のタイムゾーン付き TIMESTAMP_TRUNC は、ターゲットタイムゾーンで切り捨てを行い、UTC として返します。
+                # BigQuery との互換性を保つには、2 つの AT TIME ZONE が必要です。
+                # 1. 最初の AT TIME ZONE: 切り捨てがターゲットタイムゾーンで行われるようにします。
+                # 2. 2 番目の AT TIME ZONE: DATE の結果を TIMESTAMPTZ に戻します（時刻部分は保持されます）。
                 timestamp = exp.AtTimeZone(this=timestamp, zone=zone)
                 result_sql = self.func("DATE_TRUNC", unit, timestamp)
                 return self.sql(exp.AtTimeZone(this=result_sql, zone=zone))

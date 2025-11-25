@@ -29,6 +29,8 @@ def _build_datediff(args: t.List) -> exp.Expression:
     """
     Although Spark docs don't mention the "unit" argument, Spark3 added support for
     it at some point. Databricks also supports this variant (see below).
+    Sparkのドキュメントでは「unit」引数について言及されていませんが、
+    Spark3でサポートが追加されました。Databricksもこの引数をサポートしています（下記参照）。
 
     For example, in spark-sql (v3.3.1):
     - SELECT DATEDIFF('2020-01-01', '2020-01-05') results in -4
@@ -67,7 +69,8 @@ def _build_dateadd(args: t.List) -> exp.Expression:
 
 
 def _normalize_partition(e: exp.Expression) -> exp.Expression:
-    """Normalize the expressions in PARTITION BY (<expression>, <expression>, ...)"""
+    """Normalize the expressions in PARTITION BY (<expression>, <expression>, ...)
+    PARTITION BY (<expression>, <expression>, ...) 内の式を正規化します。"""
     if isinstance(e, str):
         return exp.to_identifier(e)
     if isinstance(e, exp.Literal):
@@ -80,6 +83,7 @@ def _dateadd_sql(self: Spark.Generator, expression: exp.TsOrDsAdd | exp.Timestam
         isinstance(expression, exp.TsOrDsAdd) and expression.text("unit").upper() == "DAY"
     ):
         # Coming from Hive/Spark2 DATE_ADD or roundtripping the 2-arg version of Spark3/DB
+        # Hive/Spark 2のDATE_ADDから来るか、Spark3/DBの2引数バージョンをラウンドトリップする
         return self.func("DATE_ADD", expression.this, expression.expression)
 
     this = self.func(
@@ -92,6 +96,8 @@ def _dateadd_sql(self: Spark.Generator, expression: exp.TsOrDsAdd | exp.Timestam
     if isinstance(expression, exp.TsOrDsAdd):
         # The 3 arg version of DATE_ADD produces a timestamp in Spark3/DB but possibly not
         # in other dialects
+        # DATE_ADDの3引数バージョンはSpark3/DBではタイムスタンプを生成しますが、
+        # 他の方言では生成しない可能性があります。
         return_type = expression.return_type
         if not return_type.is_type(exp.DataType.Type.TIMESTAMP, exp.DataType.Type.DATETIME):
             this = f"CAST({this} AS {return_type})"

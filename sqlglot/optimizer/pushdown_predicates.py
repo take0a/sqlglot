@@ -8,6 +8,7 @@ from sqlglot import Dialect
 def pushdown_predicates(expression, dialect=None):
     """
     Rewrite sqlglot AST to pushdown predicates in FROMS and JOINS
+    FORMS と JOINS の述語をプッシュダウンするように sqlglot AST を書き直す
 
     Example:
         >>> import sqlglot
@@ -18,8 +19,10 @@ def pushdown_predicates(expression, dialect=None):
 
     Args:
         expression (sqlglot.Expression): expression to optimize
+            最適化する式
     Returns:
         sqlglot.Expression: optimized expression
+        sqlglot.Expression: 最適化された式
     """
     from sqlglot.dialects.athena import Athena
     from sqlglot.dialects.presto import Presto
@@ -43,6 +46,8 @@ def pushdown_predicates(expression, dialect=None):
 
                 # a right join can only push down to itself and not the source FROM table
                 # presto, trino and athena don't support inner joins where the RHS is an UNNEST expression
+                # 右結合は、ソース テーブル FROM ではなく、それ自身にのみプッシュダウンできます。
+                # Presto、Trino、および Athena は、RHS が UNNEST 式である内部結合をサポートしていません。
                 pushdown_allowed = True
                 for k, (node, source) in selected_sources.items():
                     parent = node.find_ancestor(exp.Join, exp.From)
@@ -59,6 +64,8 @@ def pushdown_predicates(expression, dialect=None):
 
             # joins should only pushdown into itself, not to other joins
             # so we limit the selected sources to only itself
+            # 結合は他の結合ではなく、それ自体にのみプッシュダウンする必要があるため、
+            # 選択されたソースはそれ自体のみに制限されます。
             for join in select.args.get("joins") or []:
                 name = join.alias_or_name
                 if name in scope.selected_sources:
@@ -94,6 +101,7 @@ def pushdown(condition, sources, scope_ref_count, dialect, join_index=None):
 def pushdown_cnf(predicates, sources, scope_ref_count, join_index=None):
     """
     If the predicates are in CNF like form, we can simply replace each block in the parent.
+    述語が CNF のような形式である場合は、親内の各ブロックを単純に置き換えることができます。
     """
     join_index = join_index or {}
     for predicate in predicates:
@@ -121,11 +129,16 @@ def pushdown_dnf(predicates, sources, scope_ref_count):
     """
     If the predicates are in DNF form, we can only push down conditions that are in all blocks.
     Additionally, we can't remove predicates from their original form.
+    述語がDNF形式の場合、すべてのブロックに含まれる条件のみをプッシュダウンできます。
+    また、述語を元の形式から削除することはできません。
     """
     # find all the tables that can be pushdown too
     # these are tables that are referenced in all blocks of a DNF
+    # プッシュダウン可能なすべてのテーブルを検索します。
+    # これらは、DNF のすべてのブロックで参照されるテーブルです。
     # (a.x AND b.x) OR (a.y AND c.y)
     # only table a can be push down
+    # プッシュダウンできるのはテーブル a のみです。
     pushdown_tables = set()
 
     for a in predicates:
@@ -139,6 +152,7 @@ def pushdown_dnf(predicates, sources, scope_ref_count):
     conditions = {}
 
     # pushdown all predicates to their respective nodes
+    # すべての述語をそれぞれのノードにプッシュダウンする
     for table in sorted(pushdown_tables):
         for predicate in predicates:
             nodes = nodes_for_predicate(predicate, sources, scope_ref_count)
@@ -176,10 +190,13 @@ def nodes_for_predicate(predicate, sources, scope_ref_count):
 
         # if the predicate is in a where statement we can try to push it down
         # we want to find the root join or from statement
+        # 述語がwhere文にある場合は、それをプッシュダウンして
+        # ルートのjoinまたはfrom文を見つけようとします。
         if node and where_condition:
             node = node.find_ancestor(exp.Join, exp.From)
 
         # a node can reference a CTE which should be pushed down
+        # ノードはプッシュダウンされるべきCTEを参照できる
         if isinstance(node, exp.From) and not isinstance(source, exp.Table):
             with_ = source.parent.expression.args.get("with_")
             if with_ and with_.recursive:
@@ -192,11 +209,14 @@ def nodes_for_predicate(predicate, sources, scope_ref_count):
             nodes[table] = node
         elif isinstance(node, exp.Select) and len(tables) == 1:
             # We can't push down window expressions
+            # ウィンドウ式をプッシュダウンすることはできません
             has_window_expression = any(
                 select for select in node.selects if select.find(exp.Window)
             )
             # we can't push down predicates to select statements if they are referenced in
             # multiple places.
+            # 述語が複数の場所で参照されている場合、
+            # 述語を SELECT ステートメントにプッシュダウンすることはできません。
             if (
                 not node.args.get("group")
                 and scope_ref_count[id(source)] < 2

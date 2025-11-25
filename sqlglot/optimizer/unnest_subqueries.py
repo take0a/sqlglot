@@ -6,9 +6,12 @@ from sqlglot.optimizer.scope import ScopeType, find_in_scope, traverse_scope
 def unnest_subqueries(expression):
     """
     Rewrite sqlglot AST to convert some predicates with subqueries into joins.
+    sqlglot AST を書き直し、サブクエリを含む一部の述語を結合に変換します。
 
     Convert scalar subqueries into cross joins.
     Convert correlated or vectorized subqueries into a group by so it is not a many to many left join.
+    スカラーサブクエリをクロス結合に変換します。
+    相関サブクエリまたはベクトル化サブクエリをグループ化して、多対多の左結合にならないようにします。
 
     Example:
         >>> import sqlglot
@@ -20,6 +23,7 @@ def unnest_subqueries(expression):
         expression (sqlglot.Expression): expression to unnest
     Returns:
         sqlglot.Expression: unnested expression
+            sqlglot.Expression: ネストされていない式
     """
     next_alias_name = name_sequence("_u_")
 
@@ -55,6 +59,7 @@ def unnest(select, parent_select, next_alias_name):
     clause = predicate.find_ancestor(exp.Having, exp.Where, exp.Join)
 
     # This subquery returns a scalar and can just be converted to a cross join
+    # このサブクエリはスカラーを返し、クロス結合に変換することができます。
     if not isinstance(predicate, (exp.In, exp.Any)):
         column = exp.column(select.selects[0].alias_or_name, alias)
 
@@ -77,6 +82,9 @@ def unnest(select, parent_select, next_alias_name):
             # If a subquery returns no rows, cross-joining against it incorrectly eliminates all rows
             # from the parent query. Therefore, we use a LEFT JOIN that always matches (ON TRUE), then
             # check for non-NULL column values to determine whether the subquery contained rows.
+            # サブクエリが行を返さない場合、そのサブクエリに対してクロス結合を行うと、親クエリのすべての行が
+            # 誤って除外されてしまいます。そのため、常に一致する（ON TRUE）LEFT JOINを使用し、NULL以外の
+            # 列値をチェックすることで、サブクエリに行が含まれているかどうかを判断します。
             column = column.is_(exp.null()).not_()
             join_type = "LEFT"
             on_clause = exp.true()
@@ -138,6 +146,7 @@ def decorrelate(select, parent_select, external_columns, next_alias_name):
 
     # for all external columns in the where statement, find the relevant predicate
     # keys to convert it into a join
+    # where文のすべての外部列について、関連する述語キーを見つけて結合に変換します。
     for column in external_columns:
         if column.find_ancestor(exp.Where) is not where:
             return
@@ -173,6 +182,7 @@ def decorrelate(select, parent_select, external_columns, next_alias_name):
 
     for key, _, predicate in keys:
         # if we filter on the value of the subquery, it needs to be unique
+        # サブクエリの値をフィルタリングする場合、その値は一意である必要があります
         if key == value.this:
             key_aliases[key] = value.alias
             group_by.append(key)
@@ -181,6 +191,7 @@ def decorrelate(select, parent_select, external_columns, next_alias_name):
                 key_aliases[key] = next_alias_name()
             # all predicates that are equalities must also be in the unique
             # so that we don't do a many to many join
+            # 等式である述語はすべて一意でなければならないので、多対多の結合は行われない。
             if isinstance(predicate, exp.EQ) and key not in group_by:
                 group_by.append(key)
 
@@ -188,6 +199,8 @@ def decorrelate(select, parent_select, external_columns, next_alias_name):
 
     # if the value of the subquery is not an agg or a key, we need to collect it into an array
     # so that it can be grouped. For subquery projections, we use a MAX aggregation instead.
+    # サブクエリの値が集計またはキーでない場合は、グループ化できるように配列にまとめる必要があります。
+    # サブクエリの射影では、代わりにMAX集計を使用します。
     agg_func = exp.Max if is_subquery_projection else exp.ArrayAgg
     if not value.find(exp.AggFunc) and value.this not in group_by:
         select.select(
@@ -198,6 +211,8 @@ def decorrelate(select, parent_select, external_columns, next_alias_name):
 
     # exists queries should not have any selects as it only checks if there are any rows
     # all selects will be added by the optimizer and only used for join keys
+    # 存在するクエリには、行があるかどうかをチェックするだけなので、選択は不要です。
+    # すべての選択はオプティマイザによって追加され、結合キーにのみ使用されます。
     if isinstance(parent_predicate, exp.Exists):
         select.set("expressions", [])
 
@@ -205,6 +220,7 @@ def decorrelate(select, parent_select, external_columns, next_alias_name):
         if key in group_by:
             # add all keys to the projections of the subquery
             # so that we can use it as a join key
+            # サブクエリの射影にすべてのキーを追加して、結合キーとして使用できるようにします。
             if isinstance(parent_predicate, exp.Exists) or key != value.this:
                 select.select(f"{key} AS {alias}", copy=False)
         else:
@@ -245,6 +261,8 @@ def decorrelate(select, parent_select, external_columns, next_alias_name):
 
         # COUNT always returns 0 on empty datasets, so we need take that into consideration here
         # by transforming all counts into 0 and using that as the coalesced value
+        # COUNTは空のデータセットでは常に0を返すので、ここではそれを考慮に入れて、
+        # すべてのカウントを0に変換し、それを結合値として使用する必要があります。
         if value.find(exp.Count):
 
             def remove_aggs(node):

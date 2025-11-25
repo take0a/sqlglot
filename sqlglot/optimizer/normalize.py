@@ -14,6 +14,7 @@ logger = logging.getLogger("sqlglot")
 def normalize(expression: exp.Expression, dnf: bool = False, max_distance: int = 128):
     """
     Rewrite sqlglot AST into conjunctive normal form or disjunctive normal form.
+    sqlglot AST を連言正規形または選言正規形に書き換えます。
 
     Example:
         >>> import sqlglot
@@ -23,7 +24,9 @@ def normalize(expression: exp.Expression, dnf: bool = False, max_distance: int =
 
     Args:
         expression: expression to normalize
+            正規化する式
         dnf: rewrite in disjunctive normal form instead.
+            代わりに選言標準形で書き直してください。
         max_distance (int): the maximal estimated distance from cnf/dnf to attempt conversion
     Returns:
         sqlglot.Expression: normalized expression
@@ -69,6 +72,7 @@ def normalize(expression: exp.Expression, dnf: bool = False, max_distance: int =
 def normalized(expression: exp.Expression, dnf: bool = False) -> bool:
     """
     Checks whether a given expression is in a normal form of interest.
+    指定された式が対象の通常の形式であるかどうかを確認します。
 
     Example:
         >>> from sqlglot import parse_one
@@ -81,8 +85,11 @@ def normalized(expression: exp.Expression, dnf: bool = False) -> bool:
 
     Args:
         expression: The expression to check if it's normalized.
+            正規化されているかどうかを確認する式。
         dnf: Whether to check if the expression is in Disjunctive Normal Form (DNF).
             Default: False, i.e. we check if it's in Conjunctive Normal Form (CNF).
+            式が選言正規形 (DNF) であるかどうかを確認するかどうか。
+            デフォルト: False。つまり、連言正規形 (CNF) であるかどうかを確認します。
     """
     ancestor, root = (exp.And, exp.Or) if dnf else (exp.Or, exp.And)
     return not any(
@@ -95,8 +102,10 @@ def normalization_distance(
 ) -> int:
     """
     The difference in the number of predicates between a given expression and its normalized form.
+    与えられた式とその正規化された形式との間の述語数の差。
 
     This is used as an estimate of the cost of the conversion which is exponential in complexity.
+    これは、複雑さが指数関数的に増加する変換コストの見積もりとして使用されます。
 
     Example:
         >>> import sqlglot
@@ -106,12 +115,17 @@ def normalization_distance(
 
     Args:
         expression: The expression to compute the normalization distance for.
+            正規化距離を計算する式。
         dnf: Whether to check if the expression is in Disjunctive Normal Form (DNF).
             Default: False, i.e. we check if it's in Conjunctive Normal Form (CNF).
+            式が選言正規形 (DNF) であるかどうかを確認するかどうか。
+            デフォルト: False。つまり、連言正規形 (CNF) であるかどうかを確認します。
         max_: stop early if count exceeds this.
+            カウントがこれを超えると早期に停止します。
 
     Returns:
         The normalization distance.
+        正規化距離。
     """
     total = -(sum(1 for _ in expression.find_all(exp.Connector)) + 1)
 
@@ -126,6 +140,7 @@ def normalization_distance(
 def _predicate_lengths(expression, dnf, max_=float("inf"), depth=0):
     """
     Returns a list of predicate lengths when expanded to normalized form.
+    正規化された形式に展開された述語の長さのリストを返します。
 
     (A AND B) OR C -> [2, 2] because len(A OR C), len(B OR C).
     """

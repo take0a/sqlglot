@@ -49,6 +49,9 @@ class Step:
         Builds a DAG of Steps from a SQL expression so that it's easier to execute in an engine.
         Note: the expression's tables and subqueries must be aliased for this method to work. For
         example, given the following expression:
+        SQL式からステップのDAGを構築し、エンジンでの実行を容易にします。
+        注: このメソッドが機能するには、式のテーブルとサブクエリに別名を付ける必要があります。
+        例えば、次の式があるとします。
 
         SELECT
           x.a,
@@ -59,6 +62,7 @@ class Step:
         GROUP BY x.a
 
         the following DAG is produced (the expression IDs might differ per execution):
+        次の DAG が生成されます (式 ID は実行ごとに異なる場合があります)。
 
         - Aggregate: x (4347984624)
             Context:
@@ -87,10 +91,13 @@ class Step:
 
         Args:
             expression: the expression to build the DAG from.
+                DAG を構築する式。
             ctes: a dictionary that maps CTEs to their corresponding Step DAG by name.
+                CTE を名前によって対応する Step DAG にマッピングする辞書。
 
         Returns:
             A Step DAG corresponding to `expression`.
+            `expression` に対応するステップ DAG。
         """
         ctes = ctes or {}
         expression = expression.unnest()
@@ -177,6 +184,7 @@ class Step:
             set_ops_and_aggs(aggregate)
 
             # give aggregates names and replace projections with references to them
+            # 集計に名前を付け、投影をそれらの参照に置き換える
             aggregate.group = {
                 f"_g{i}": e for i, e in enumerate(group.expressions if group else [])
             }

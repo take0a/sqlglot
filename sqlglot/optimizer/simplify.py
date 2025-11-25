@@ -35,6 +35,7 @@ def simplify(
 ):
     """
     Rewrite sqlglot AST to simplify expressions.
+    式を簡素化するために sqlglot AST を書き直します。
 
     Example:
         >>> import sqlglot
@@ -44,12 +45,17 @@ def simplify(
 
     Args:
         expression: expression to simplify
+            簡略化する式
         constant_propagation: whether the constant propagation rule should be used
+            定数伝播ルールを使用するかどうか
         coalesce_simplification: whether the simplify coalesce rule should be used.
             This rule tries to remove coalesce functions, which can be useful in certain analyses but
             can leave the query more verbose.
+            簡素化された合体ルールを使用するかどうか。このルールは、特定の分析では役立つものの
+            クエリが冗長になる可能性がある合体関数を削除しようとします。
     Returns:
         sqlglot.Expression: simplified expression
+        sqlglot.Expression: 簡略化された式
     """
     return Simplifier(dialect=dialect).simplify(
         expression,
@@ -63,7 +69,8 @@ class UnsupportedUnit(Exception):
 
 
 def catch(*exceptions):
-    """Decorator that ignores a simplification function if any of `exceptions` are raised"""
+    """Decorator that ignores a simplification function if any of `exceptions` are raised
+    いずれかの `exceptions` が発生した場合に簡略化関数を無視するデコレータ"""
 
     def decorator(func):
         def wrapped(expression, *args, **kwargs):
@@ -131,6 +138,7 @@ def simplify_parens(expression: exp.Expression, dialect: DialectType) -> exp.Exp
         return expression
 
     # Handle risingwave struct columns
+    # risingwave 構造体の列を処理する
     # see https://docs.risingwave.com/sql/data-types/struct#retrieve-data-in-a-struct
     if (
         dialect == "risingwave"
@@ -162,6 +170,7 @@ def simplify_parens(expression: exp.Expression, dialect: DialectType) -> exp.Exp
 def propagate_constants(expression, root=True):
     """
     Propagate constants for conjunctions in DNF:
+    DNF の接続語に対応した定数の伝播をします。
 
     SELECT * FROM t WHERE a = b AND b = 5 becomes
     SELECT * FROM t WHERE a = 5 AND b = 5
@@ -181,6 +190,8 @@ def propagate_constants(expression, root=True):
 
                 # TODO: create a helper that can be used to detect nested literal expressions such
                 # as CAST(123456 AS BIGINT), since we usually want to treat those as literals too
+                # TODO: CAST(123456 AS BIGINT) のようなネストされたリテラル式を検出するために使用できる
+                # ヘルパーを作成します。通常、これらもリテラルとして扱いたいためです。
                 if isinstance(l, exp.Column) and isinstance(r, exp.Literal):
                     constant_mapping[l] = (id(l), r)
 
@@ -217,16 +228,19 @@ def _is_constant(expression: exp.Expression) -> bool:
 def _datetrunc_range(date: datetime.date, unit: str, dialect: Dialect) -> t.Optional[DateRange]:
     """
     Get the date range for a DATE_TRUNC equality comparison:
+    DATE_TRUNC 等価比較の日付範囲を取得します。
 
     Example:
         _datetrunc_range(date(2021-01-01), 'year') == (date(2021-01-01), date(2022-01-01))
     Returns:
         tuple of [min, max) or None if a value can never be equal to `date` for `unit`
+        [min, max) のタプル、または値が `unit` の `date` と等しくなることがない場合は None
     """
     floor = date_floor(date, unit, dialect)
 
     if date != floor:
         # This will always be False, except for NULL values.
+        # NULL 値の場合を除き、これは常に False になります。
         return None
 
     return floor, floor + interval(unit)
@@ -235,7 +249,8 @@ def _datetrunc_range(date: datetime.date, unit: str, dialect: Dialect) -> t.Opti
 def _datetrunc_eq_expression(
     left: exp.Expression, drange: DateRange, target_type: t.Optional[exp.DataType]
 ) -> exp.Expression:
-    """Get the logical expression for a date range"""
+    """Get the logical expression for a date range
+    日付範囲の論理式を取得する"""
     return exp.and_(
         left >= date_literal(drange[0], target_type),
         left < date_literal(drange[1], target_type),
@@ -439,6 +454,7 @@ def date_floor(d: datetime.date, unit: str, dialect: Dialect) -> datetime.date:
         return d.replace(month=d.month, day=1)
     if unit == "week":
         # Assuming week starts on Monday (0) and ends on Sunday (6)
+        # 週は月曜日（0）に始まり、日曜日（6）に終わると仮定します。
         return d - datetime.timedelta(days=d.weekday() - dialect.WEEK_OFFSET)
     if unit == "day":
         return d
@@ -469,9 +485,11 @@ class Simplifier:
         )
 
     # Final means that an expression should not be simplified
+    # finalは式を簡略化してはならないことを意味する
     FINAL = "final"
 
     # Value ranges for byte-sized signed/unsigned integers
+    # バイトサイズの符号付き/符号なし整数の値の範囲
     TINYINT_MIN = -128
     TINYINT_MAX = 127
     UTINYINT_MIN = 0
@@ -547,6 +565,9 @@ class Simplifier:
     # CROSS joins result in an empty table if the right table is empty.
     # So we can only simplify certain types of joins to CROSS.
     # Or in other words, LEFT JOIN x ON TRUE != CROSS JOIN x
+    # CROSS 結合では、右側のテーブルが空の場合、結果のテーブルは空になります。
+    # そのため、CROSS に簡略化できるのは特定の種類の結合のみです。
+    # つまり、LEFT JOIN x ON TRUE != CROSS JOIN x となります。
     JOINS = {
         ("", ""),
         ("", "INNER"),
@@ -571,8 +592,10 @@ class Simplifier:
                     continue
 
                 # group by expressions cannot be simplified, for example
+                # GROUP BY 式は簡略化できません。例:
                 # select x + 1 + 1 FROM y GROUP BY x + 1 + 1
                 # the projection must exactly match the group by key
+                # 射影は GROUP BY キーと完全に一致する必要があります
                 group = node.args.get("group")
 
                 if group and hasattr(node, "selects"):
@@ -618,6 +641,8 @@ class Simplifier:
 
                 # Resets parent, arg_key, index pointers– this is needed because some of the
                 # previous transformations mutate the AST, leading to an inconsistent state
+                # 親、arg_key、インデックスポインタをリセットします。
+                # これは、以前の変換の一部が ASTを変更し、不整合な状態を引き起したため必要です。
                 for k, v in tuple(node.args.items()):
                     node.set(k, v)
 
@@ -650,8 +675,10 @@ class Simplifier:
     @annotate_types_on_change
     def rewrite_between(self, expression: exp.Expression) -> exp.Expression:
         """Rewrite x between y and z to x >= y AND x <= z.
+        x between y and z を x >= y AND x <= z に書き換えます。
 
         This is done because comparison simplification is only done on lt/lte/gt/gte.
+        これは、比較の簡略化が lt/lte/gt/gte でのみ行われるためです。
         """
         if isinstance(expression, exp.Between):
             negate = isinstance(expression.parent, exp.Not)
@@ -671,6 +698,7 @@ class Simplifier:
     def simplify_not(self, expression: exp.Expression) -> exp.Expression:
         """
         Demorgan's Law
+        ド・モルガンの法則
         NOT (x OR y) -> NOT x AND NOT y
         NOT (x AND y) -> NOT x OR NOT y
         """
@@ -764,9 +792,13 @@ class Simplifier:
             # If we reduced a connector to, e.g., a column (t1 AND ... AND tn -> Tk), then we need
             # to ensure that the resulting type is boolean. We know this is true only for connectors,
             # boolean values and columns that are essentially operands to a connector:
+            # コネクタを例えば列 (t1 AND ... AND tn -> Tk) に縮小した場合、
+            # 結果の型がブール型であることを確認する必要があります。
+            # これは、コネクタ、ブール値、そして本質的にコネクタのオペランドとなる列にのみ当てはまります。
             #
             # A AND (((B)))
             #          ~ this is safe to keep because it will eventually be part of another connector
+            #          ~ これは、最終的には別のコネクタの一部となるため、保持しても安全です
             if not isinstance(
                 expression, self.SAFE_CONNECTOR_ELIMINATION_RESULT
             ) and not expression.is_type(exp.DataType.Type.BOOLEAN):
@@ -816,6 +848,7 @@ class Simplifier:
                     if not r:
                         return None
                     # python won't compare date and datetime, but many engines will upcast
+                    # Pythonは日付と日付時刻を比較しませんが、多くのエンジンはアップキャストします
                     l, r = cast_as_datetime(l), cast_as_datetime(r)
 
                 for (a, av), (b, bv) in itertools.permutations(((left, l), (right, r))):
@@ -825,6 +858,7 @@ class Simplifier:
                         return left if (av < bv if or_ else av >= bv) else right
 
                     # we can't ever shortcut to true because the column could be null
+                    # 列がnullになる可能性があるため、trueへのショートカットはできません
                     if not or_:
                         if isinstance(a, exp.LT) and isinstance(b, self.GT_GTE):
                             if av <= bv:
@@ -849,6 +883,7 @@ class Simplifier:
     def remove_complements(self, expression, root=True):
         """
         Removing complements.
+        補足を削除します。
 
         A AND NOT A -> FALSE (only for non-NULL A)
         A OR NOT A -> TRUE (only for non-NULL A)
@@ -866,6 +901,7 @@ class Simplifier:
     def uniq_sort(self, expression, root=True):
         """
         Uniq and sort a connector.
+        コネクタを一意にソートします。
 
         C AND A AND B AND B -> A AND B AND C
         """
@@ -875,6 +911,7 @@ class Simplifier:
             if isinstance(expression, exp.Xor):
                 result_func = exp.xor
                 # Do not deduplicate XOR as A XOR A != A if A == True
+                # A == True の場合、XOR を A XOR A != A として重複排除しないでください。
                 deduped = None
                 arr = tuple((gen(e), e) for e in flattened)
             else:
@@ -883,6 +920,7 @@ class Simplifier:
                 arr = tuple(deduped.items())
 
             # check if the operands are already sorted, if not sort them
+            # オペランドがすでにソートされているかどうかを確認し、そうでない場合はソートする
             # A AND C AND B -> A AND B AND C
             for i, (sql, e) in enumerate(arr[1:]):
                 if sql < arr[i][0]:
@@ -890,6 +928,7 @@ class Simplifier:
                     break
             else:
                 # we didn't have to sort but maybe we need to dedup
+                # 並べ替える必要はありませんでしたが、重複を削除する必要があるかもしれません
                 if deduped and len(deduped) < len(flattened):
                     unique_operand = flattened[0]
                     if len(deduped) == 1:
@@ -902,12 +941,12 @@ class Simplifier:
     @annotate_types_on_change
     def absorb_and_eliminate(self, expression, root=True):
         """
-        absorption:
+        absorption 吸収:
             A AND (A OR B) -> A
             A OR (A AND B) -> A
             A AND (NOT A OR B) -> A AND B
             A OR (NOT A AND B) -> A OR B
-        elimination:
+        elimination 消去:
             (A AND B) OR (A AND NOT B) -> A
             (A OR B) AND (A OR NOT B) -> A
         """
@@ -917,14 +956,19 @@ class Simplifier:
             ops = tuple(expression.flatten())
 
             # Initialize lookup tables:
+            # ルックアップテーブルを初期化します:
             # Set of all operands, used to find complements for absorption.
+            # 吸収の補数を求めるために使用されるすべてのオペランドのセット。
             op_set = set()
             # Sub-operands, used to find subsets for absorption.
+            # 吸収のサブセットを見つけるために使用されるサブオペランド。
             subops = defaultdict(list)
             # Pairs of complements, used for elimination.
+            # 消去に使用される補語のペア。
             pairs = defaultdict(list)
 
             # Populate the lookup tables
+            # ルックアップテーブルにデータを入力する
             for op in ops:
                 op_set.add(op)
 
@@ -952,7 +996,7 @@ class Simplifier:
 
                 a, b = op.unnest_operands()
 
-                # Absorb
+                # Absorb 吸収
                 if isinstance(a, exp.Not) and a.this in op_set:
                     a.replace(exp.true() if kind == exp.And else exp.false())
                     continue
@@ -964,7 +1008,7 @@ class Simplifier:
                     op.replace(exp.false() if kind == exp.And else exp.true())
                     continue
 
-                # Eliminate
+                # Eliminate 消去
                 for other, complement in pairs[frozenset((a, b))]:
                     op.replace(complement)
                     other.replace(complement)
@@ -976,11 +1020,14 @@ class Simplifier:
     def simplify_equality(self, expression: exp.Expression) -> exp.Expression:
         """
         Use the subtraction and addition properties of equality to simplify expressions:
+        等式の減算と加算の特性を使用して式を簡略化します。
 
             x + 1 = 3 becomes x = 2
 
         There are two binary operations in the above expression: + and =
         Here's how we reference all the operands in the code below:
+        上記の式には、+ と = という2つの二項演算があります。
+        以下のコードでは、すべてのオペランドを次のように参照します。
 
             l     r
             x + 1 = 3
@@ -1049,6 +1096,9 @@ class Simplifier:
             # Remove the (up)cast from small (byte-sized) integers in predicates which is side-effect free. Downcasts on any
             # integer type might cause overflow, thus the cast cannot be eliminated and the behavior is
             # engine-dependent
+            # 述語中の小さな（バイトサイズの）整数から副作用のない（アップ）キャストを削除します。
+            # 整数型へのダウンキャストはオーバーフローを引き起こす可能性があるため、
+            # キャストを削除することはできず、動作はエンジンに依存します。
             if (
                 self.TINYINT_MIN <= num <= self.TINYINT_MAX
                 and expr.to.this in exp.DataType.SIGNED_INTEGER_TYPES
@@ -1093,10 +1143,12 @@ class Simplifier:
                 return exp.Literal.number(num_a * num_b)
 
             # We only simplify Sub, Div if a and b have the same parent because they're not associative
+            # aとbが同じ親を持つ場合にのみSub、Divを単純化します。なぜなら、それらは結合的ではないからです。
             if isinstance(expression, exp.Sub):
                 return exp.Literal.number(num_a - num_b) if a.parent is b.parent else None
             if isinstance(expression, exp.Div):
                 # engines have differing int div behavior so intdiv is not safe
+                # エンジンによって int div の動作が異なるため、intdiv は安全ではありません。
                 if (isinstance(num_a, int) and isinstance(num_b, int)) or a.parent is not b.parent:
                     return None
                 return exp.Literal.number(num_a / num_b)
@@ -1120,6 +1172,7 @@ class Simplifier:
         elif isinstance(a, exp.Interval) and _is_date_literal(b):
             a, date = extract_interval(a), extract_date(b)
             # you cannot subtract a date from an interval
+            # 間隔から日付を引くことはできません
             if a and b and isinstance(expression, exp.Add):
                 return date_literal(a + date, extract_type(b))
         elif _is_date_literal(a) and _is_date_literal(b):
@@ -1145,6 +1198,9 @@ class Simplifier:
         # We can't convert `COALESCE(x, 1) = 2` into `NOT x IS NULL AND x = 2` for redshift,
         # because they are not always equivalent. For example,  if `x` is `NULL` and it comes
         # from a table, then the result is `NULL`, despite `FALSE AND NULL` evaluating to `FALSE`
+        # redshiftでは、`COALESCE(x, 1) = 2`を`NOT x IS NULL AND x = 2`に変換することはできません。
+        # なぜなら、これらは必ずしも等価ではないからです。例えば、`x`が`NULL`で、それがテーブルから
+        # 取得された場合、`FALSE AND NULL`が`FALSE`と評価されるにもかかわらず、結果は`NULL`になります。
         if self.dialect == "redshift":
             return expression
 
@@ -1162,10 +1218,12 @@ class Simplifier:
 
         # This transformation is valid for non-constants,
         # but it really only does anything if they are both constants.
+        # この変換は非定数に対して有効ですが、実際には両方が定数である場合にのみ実行されます。
         if not _is_constant(other):
             return expression
 
         # Find the first constant arg
+        # 最初の定数引数を見つける
         for arg_index, arg in enumerate(coalesce.expressions):
             if _is_constant(arg):
                 break
@@ -1176,9 +1234,12 @@ class Simplifier:
 
         # Remove the COALESCE function. This is an optimization, skipping a simplify iteration,
         # since we already remove COALESCE at the top of this function.
+        # COALESCE関数を削除します。これは最適化であり、この関数の先頭で
+        # 既にCOALESCE関数を削除しているため、単純化の反復処理をスキップします。
         coalesce = coalesce if coalesce.expressions else coalesce.this
 
         # This expression is more complex than when we started, but it will get simplified further
+        # この表現は当初よりも複雑になっていますが、今後さらに簡素化される予定です。
         return exp.paren(
             exp.or_(
                 exp.and_(
@@ -1201,6 +1262,7 @@ class Simplifier:
         """Reduces all groups that contain string literals by concatenating them."""
         if not isinstance(expression, self.CONCATS) or (
             # We can't reduce a CONCAT_WS call if we don't statically know the separator
+            # 静的にセパレータを知らない場合、CONCAT_WS呼び出しを削減することはできません。
             isinstance(expression, exp.ConcatWs) and not expression.expressions[0].is_string
         ):
             return expression
@@ -1240,7 +1302,8 @@ class Simplifier:
 
     @annotate_types_on_change
     def simplify_conditionals(self, expression):
-        """Simplifies expressions like IF, CASE if their condition is statically known."""
+        """Simplifies expressions like IF, CASE if their condition is statically known.
+        条件が静的にわかっている場合は、IF、CASE などの式を簡略化します。"""
         if isinstance(expression, exp.Case):
             this = expression.this
             for case in expression.args["ifs"]:
@@ -1269,6 +1332,8 @@ class Simplifier:
         """
         Reduces a prefix check to either TRUE or FALSE if both the string and the
         prefix are statically known.
+        文字列とプレフィックスの両方が静的にわかっている場合は、
+        プレフィックス チェックを TRUE または FALSE に減らします。
 
         Example:
             >>> from sqlglot import parse_one
@@ -1290,7 +1355,8 @@ class Simplifier:
     @annotate_types_on_change
     @catch(ModuleNotFoundError, UnsupportedUnit)
     def simplify_datetrunc(self, expression: exp.Expression) -> exp.Expression:
-        """Simplify expressions like `DATE_TRUNC('year', x) >= CAST('2021-01-01' AS DATE)`"""
+        """Simplify expressions like `DATE_TRUNC('year', x) >= CAST('2021-01-01' AS DATE)`
+        `DATE_TRUNC('year', x) >= CAST('2021-01-01' AS DATE)` のような式を簡略化します。"""
         comparison = expression.__class__
 
         if isinstance(expression, self.DATETRUNCS):
@@ -1419,13 +1485,18 @@ class Simplifier:
 
 def gen(expression: t.Any, comments: bool = False) -> str:
     """Simple pseudo sql generator for quickly generating sortable and uniq strings.
+    ソート可能で一意の文字列を素早く生成するためのシンプルな疑似SQLジェネレータです。
 
     Sorting and deduping sql is a necessary step for optimization. Calling the actual
     generator is expensive so we have a bare minimum sql generator here.
+    SQLのソートと重複排除は最適化に不可欠なステップです。実際のジェネレータの呼び出しは
+    コストが高いため、ここでは必要最低限​​の機能のみのSQLジェネレータを使用しています。
 
     Args:
         expression: the expression to convert into a SQL string.
+            SQL 文字列に変換する式。
         comments: whether to include the expression's comments.
+            式のコメントを含めるかどうか。
     """
     return Gen().gen(expression, comments=comments)
 

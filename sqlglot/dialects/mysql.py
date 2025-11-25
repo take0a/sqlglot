@@ -64,6 +64,7 @@ def _date_trunc_sql(self: MySQL.Generator, expression: exp.DateTrunc) -> str:
 
 
 # All specifiers for time parts (as opposed to date parts)
+# 時間部分（日付部分ではなく）のすべての指定子
 # https://dev.mysql.com/doc/refman/8.0/en/date-and-time-functions.html#function_date-format
 TIME_SPECIFIERS = {"f", "H", "h", "I", "i", "k", "l", "p", "r", "S", "s", "T"}
 
@@ -154,6 +155,9 @@ class MySQL(Dialect):
     # We default to treating all identifiers as case-sensitive, since it matches MySQL's
     # behavior on Linux systems. For MacOS and Windows systems, one can override this
     # setting by specifying `dialect="mysql, normalization_strategy = lowercase"`.
+    # LinuxシステムにおけるMySQLの動作と一致するため、すべての識別子はデフォルトで
+    # 大文字と小文字を区別して処理されます。macOSおよびWindowsシステムでは、
+    # `dialect="mysql, normalization_strategy = lowercase"` を指定することでこの設定を上書きできます。
     #
     # See also https://dev.mysql.com/doc/refman/8.2/en/identifier-case-sensitivity.html
     NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_SENSITIVE
@@ -897,6 +901,7 @@ class MySQL(Dialect):
         )
 
         # MySQL doesn't support many datatypes in cast.
+        # MySQL はキャストで多くのデータ型をサポートしていません。
         # https://dev.mysql.com/doc/refman/8.0/en/cast-functions.html#function_cast
         CAST_MAPPING = {
             **CHAR_CAST_MAPPING,
@@ -1204,6 +1209,7 @@ class MySQL(Dialect):
                 and not expression.expressions
             ):
                 # `VARCHAR` must always have a size - if it doesn't, we always generate `TEXT`
+                # `VARCHAR` は常にサイズを持っている必要があります - そうでない場合は、常に `TEXT` を生成します
                 return "TEXT"
 
             # https://dev.mysql.com/doc/refman/8.0/en/numeric-type-syntax.html

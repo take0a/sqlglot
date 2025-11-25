@@ -17,8 +17,10 @@ if t.TYPE_CHECKING:
 def merge_subqueries(expression: E, leave_tables_isolated: bool = False) -> E:
     """
     Rewrite sqlglot AST to merge derived tables into the outer query.
+    sqlglot AST を書き直して、派生テーブルを外部クエリにマージします。
 
     This also merges CTEs if they are selected from only once.
+    これにより、CTE が一度だけ選択された場合もマージされます。
 
     Example:
         >>> import sqlglot
@@ -28,6 +30,8 @@ def merge_subqueries(expression: E, leave_tables_isolated: bool = False) -> E:
 
     If `leave_tables_isolated` is True, this will not merge inner queries into outer
     queries if it would result in multiple table selects in a single query:
+    `leave_tables_isolated` が True の場合、単一のクエリで複数のテーブル選択が
+    行われることになる場合でも、内部クエリは外部クエリにマージされません。
         >>> expression = sqlglot.parse_one("SELECT a FROM (SELECT x.a FROM x) CROSS JOIN y")
         >>> merge_subqueries(expression, leave_tables_isolated=True).sql()
         'SELECT a FROM (SELECT x.a FROM x) CROSS JOIN y'
@@ -36,9 +40,11 @@ def merge_subqueries(expression: E, leave_tables_isolated: bool = False) -> E:
 
     Args:
         expression (sqlglot.Expression): expression to optimize
+            最適化する式
         leave_tables_isolated (bool):
     Returns:
         sqlglot.Expression: optimized expression
+        sqlglot.Expression: 最適化された式
     """
     expression = merge_ctes(expression, leave_tables_isolated)
     expression = merge_derived_tables(expression, leave_tables_isolated)
@@ -46,6 +52,7 @@ def merge_subqueries(expression: E, leave_tables_isolated: bool = False) -> E:
 
 
 # If a derived table has these Select args, it can't be merged
+# 派生テーブルにこれらのSelect引数がある場合、マージできません
 UNMERGABLE_ARGS = set(exp.Select.arg_types) - {
     "expressions",
     "from_",
@@ -58,6 +65,8 @@ UNMERGABLE_ARGS = set(exp.Select.arg_types) - {
 
 # Projections in the outer query that are instances of these types can be replaced
 # without getting wrapped in parentheses, because the precedence won't be altered.
+# これらの型のインスタンスである外部クエリ内の投影は、優先順位が変更されないため、
+# 括弧で囲むことなく置き換えることができます。
 SAFE_TO_REPLACE_UNWRAPPED = (
     exp.Column,
     exp.EQ,
@@ -72,6 +81,8 @@ def merge_ctes(expression: E, leave_tables_isolated: bool = False) -> E:
 
     # All places where we select from CTEs.
     # We key on the CTE scope so we can detect CTES that are selected from multiple times.
+    # CTE から選択されるすべての場所。
+    # CTE スコープをキーとして、複数回選択される CTES を検出できるようにします。
     cte_selections = defaultdict(list)
     for outer_scope in scopes:
         for table, inner_scope in outer_scope.selected_sources.values():
@@ -125,6 +136,7 @@ def _mergeable(
 ) -> bool:
     """
     Return True if `inner_select` can be merged into outer query.
+    `inner_select` を外部クエリにマージできる場合は True を返します。
     """
     inner_select = inner_scope.expression.unnest()
 
@@ -148,11 +160,14 @@ def _mergeable(
     def _outer_select_joins_on_inner_select_join():
         """
         All columns from the inner select in the ON clause must be from the first FROM table.
+        ON 句の内部選択のすべての列は、最初の FROM テーブルからのものである必要があります。
 
         That is, this can be merged:
+        つまり、これをマージすることができます:
             SELECT * FROM x JOIN (SELECT y.a AS a FROM y JOIN z) AS q ON x.a = q.a
                                          ^^^           ^
         But this can't:
+        しかし、これはできません:
             SELECT * FROM x JOIN (SELECT z.a AS a FROM y JOIN z) AS q ON x.a = q.a
                                          ^^^                  ^
         """
@@ -178,6 +193,7 @@ def _mergeable(
 
     def _is_recursive():
         # Recursive CTEs look like this:
+        # 再帰 CTE は次のようになります。
         #     WITH RECURSIVE cte AS (
         #       SELECT * FROM x  <-- inner scope
         #       UNION ALL
@@ -225,6 +241,7 @@ def _mergeable(
 def _rename_inner_sources(outer_scope: Scope, inner_scope: Scope, alias: str) -> None:
     """
     Renames any sources in the inner query that conflict with names in the outer query.
+    外部クエリ内の名前と競合する内部クエリ内のソースの名前を変更します。
     """
     inner_taken = set(inner_scope.selected_sources)
     outer_taken = set(outer_scope.selected_sources)
@@ -260,6 +277,7 @@ def _merge_from(
 ) -> None:
     """
     Merge FROM clause of inner query into outer query.
+    内部クエリの FROM 句を外部クエリにマージします。
     """
     new_subquery = inner_scope.expression.args["from_"].this
     new_subquery.set("joins", node_to_replace.args.get("joins"))
@@ -278,6 +296,7 @@ def _merge_from(
 def _merge_joins(outer_scope: Scope, inner_scope: Scope, from_or_join: FromOrJoin) -> None:
     """
     Merge JOIN clauses of inner query into outer query.
+    内部クエリの JOIN 句を外部クエリにマージします。
     """
 
     new_joins = []
@@ -304,6 +323,7 @@ def _merge_joins(outer_scope: Scope, inner_scope: Scope, from_or_join: FromOrJoi
 def _merge_expressions(outer_scope: Scope, inner_scope: Scope, alias: str) -> None:
     """
     Merge projections of inner query into outer query.
+    内部クエリの投影を外部クエリにマージします。
 
     Args:
         outer_scope (sqlglot.optimizer.scope.Scope)
@@ -342,6 +362,7 @@ def _merge_expressions(outer_scope: Scope, inner_scope: Scope, alias: str) -> No
 def _merge_where(outer_scope: Scope, inner_scope: Scope, from_or_join: FromOrJoin) -> None:
     """
     Merge WHERE clause of inner query into outer query.
+    内部クエリの WHERE 句を外部クエリにマージします。
 
     Args:
         outer_scope (sqlglot.optimizer.scope.Scope)
@@ -357,6 +378,7 @@ def _merge_where(outer_scope: Scope, inner_scope: Scope, from_or_join: FromOrJoi
     if isinstance(from_or_join, exp.Join):
         # Merge predicates from an outer join to the ON clause
         # if it only has columns that are already joined
+        # すでに結合されている列のみがある場合、外部結合の述語を ON 句にマージします。
         from_ = expression.args.get("from_")
         sources = {from_.alias_or_name} if from_ else set()
 
@@ -377,6 +399,7 @@ def _merge_where(outer_scope: Scope, inner_scope: Scope, from_or_join: FromOrJoi
 def _merge_order(outer_scope: Scope, inner_scope: Scope) -> None:
     """
     Merge ORDER clause of inner query into outer query.
+    内部クエリの ORDER 句を外部クエリにマージします。
 
     Args:
         outer_scope (sqlglot.optimizer.scope.Scope)
@@ -409,6 +432,7 @@ def _merge_hints(outer_scope: Scope, inner_scope: Scope) -> None:
 def _pop_cte(inner_scope: Scope) -> None:
     """
     Remove CTE from the AST.
+    AST から CTE を削除します。
 
     Args:
         inner_scope (sqlglot.optimizer.scope.Scope)

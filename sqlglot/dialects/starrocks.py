@@ -65,6 +65,7 @@ class StarRocks(MySQL):
             create = super()._parse_create()
 
             # Starrocks' primary key is defined outside of the schema, so we need to move it there
+            # Starrocksの主キーはスキーマ外で定義されているため、そこに移動する必要があります。
             # https://docs.starrocks.io/docs/table_design/table_types/primary_key_table/#usage
             if isinstance(create, exp.Create) and isinstance(create.this, exp.Schema):
                 props = create.args.get("properties")
@@ -83,6 +84,7 @@ class StarRocks(MySQL):
 
                 if not alias:
                     # Starrocks defaults to naming the table alias as "unnest"
+                    # Starrocksはデフォルトでテーブルエイリアスを「unnest」と命名します。
                     alias = exp.TableAlias(
                         this=exp.to_identifier("unnest"), columns=[exp.to_identifier("unnest")]
                     )
@@ -90,6 +92,7 @@ class StarRocks(MySQL):
                 elif not alias.args.get("columns"):
                     # Starrocks defaults to naming the UNNEST column as "unnest"
                     # if it's not otherwise specified
+                    # Starrocksは、特に指定がない限り、UNNEST列の名前をデフォルトで「unnest」にします。
                     alias.set("columns", [exp.to_identifier("unnest")])
 
             return unnest
@@ -128,6 +131,7 @@ class StarRocks(MySQL):
         WITH_PROPERTIES_PREFIX = "PROPERTIES"
 
         # StarRocks doesn't support "IS TRUE/FALSE" syntax.
+        # StarRocks は「IS TRUE/FALSE」構文をサポートしていません。
         IS_BOOL_ALLOWED = False
 
         CAST_MAPPING = {}
@@ -330,6 +334,7 @@ class StarRocks(MySQL):
 
         def create_sql(self, expression: exp.Create) -> str:
             # Starrocks' primary key is defined outside of the schema, so we need to move it there
+            # Starrocksの主キーはスキーマ外で定義されているため、そこに移動する必要があります。
             schema = expression.this
             if isinstance(schema, exp.Schema):
                 primary_key = schema.find(exp.PrimaryKey)
@@ -343,6 +348,8 @@ class StarRocks(MySQL):
 
                     # Verify if the first one is an engine property. Is true then insert it after the engine,
                     # otherwise insert it at the beginning
+                    # 最初のものがエンジンプロパティであるかどうかを確認します。
+                    # trueの場合はエンジンの後に挿入し、falseの場合は先頭に挿入します。
                     engine = props.find(exp.EngineProperty)
                     engine_index = (engine.index or 0) if engine else -1
                     props.set("expressions", primary_key.pop(), engine_index + 1, overwrite=False)
