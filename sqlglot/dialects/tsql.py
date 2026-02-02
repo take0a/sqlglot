@@ -229,6 +229,7 @@ def _string_agg_sql(self: TSQL.Generator, expression: exp.GroupConcat) -> str:
     distinct = expression.find(exp.Distinct)
     if distinct:
         # exp.Distinct can appear below an exp.Order or an exp.GroupConcat expression
+        # exp.Distinct は exp.Order または exp.GroupConcat 式の下に出現することができます。
         self.unsupported("T-SQL STRING_AGG doesn't support DISTINCT.")
         this = distinct.pop().expressions[0]
 
@@ -237,6 +238,7 @@ def _string_agg_sql(self: TSQL.Generator, expression: exp.GroupConcat) -> str:
         if expression.this.this:
             this = expression.this.this.pop()
         # Order has a leading space
+        # 順序には先頭のスペースがあります
         order = f" WITHIN GROUP ({self.sql(expression.this)[1:]})"
 
     separator = expression.args.get("separator") or exp.Literal.string(",")
@@ -254,12 +256,15 @@ def _build_date_delta(
         start_date = seq_get(args, 1)
         if start_date and start_date.is_number:
             # Numeric types are valid DATETIME values
+            # 数値型は有効なDATETIME値です
             if start_date.is_int:
                 adds = DEFAULT_START_DATE + datetime.timedelta(days=start_date.to_py())
                 start_date = exp.Literal.string(adds.strftime("%F"))
             else:
                 # We currently don't handle float values, i.e. they're not converted to equivalent DATETIMEs.
                 # This is not a problem when generating T-SQL code, it is when transpiling to other dialects.
+                # 現在、float 値は処理できません。つまり、同等の DATETIME に変換されません。
+                # これは T-SQL コードを生成する場合には問題になりませんが、他の方言にトランスパイルする場合は問題になります。
                 return exp_class(
                     this=seq_get(args, 2), expression=start_date, unit=unit, big_int=big_int
                 )
@@ -288,6 +293,8 @@ def qualify_derived_table_outputs(expression: exp.Expression) -> exp.Expression:
         # We keep track of the unaliased column projection indexes instead of the expressions
         # themselves, because the latter are going to be replaced by new nodes when the aliases
         # are added and hence we won't be able to reach these newly added Alias parents
+        # 式自体ではなく、エイリアスのない列投影インデックスを追跡します。エイリアスが追加されると、
+        # 式は新しいノードに置き換えられ、新しく追加されたエイリアスの親にアクセスできなくなるためです。
         query = expression.this
         unaliased_column_indexes = (
             i for i, c in enumerate(query.selects) if isinstance(c, exp.Column) and not c.alias
@@ -296,6 +303,7 @@ def qualify_derived_table_outputs(expression: exp.Expression) -> exp.Expression:
         qualify_outputs(query)
 
         # Preserve the quoting information of columns for newly added Alias nodes
+        # 新しく追加されたエイリアスノードの列の引用情報を保持します
         query_selects = query.selects
         for select_index in unaliased_column_indexes:
             alias = query_selects[select_index]
@@ -355,6 +363,9 @@ def _build_parsename(args: t.List) -> exp.SplitPart | exp.Anonymous:
     # PARSENAME(...) will be stored into exp.SplitPart if:
     # - All args are literals
     # - The part index (2nd arg) is <= 4 (max valid value, otherwise TSQL returns NULL)
+    # PARSENAME(...) は、次の条件を満たす場合、exp.SplitPart に格納されます。
+    # - すべての引数がリテラルである
+    # - パーツインデックス（2番目の引数）が 4 以下（有効な最大値。それ以外の場合は TSQL は NULL を返します）
     if len(args) == 2 and all(isinstance(arg, exp.Literal) for arg in args):
         this = args[0]
         part_index = args[1]
@@ -373,6 +384,8 @@ def _build_json_query(args: t.List, dialect: Dialect) -> exp.JSONExtract:
     if len(args) == 1:
         # The default value for path is '$'. As a result, if you don't provide a
         # value for path, JSON_QUERY returns the input expression.
+        # パスのデフォルト値は「$」です。
+        # そのため、パスに値を指定しない場合、JSON_QUERYは入力された式を返します。
         args.append(exp.Literal.string("$"))
 
     return parser.build_extract_json_with_path(exp.JSONExtract)(args, dialect)
@@ -390,8 +403,10 @@ def _timestrtotime_sql(self: TSQL.Generator, expression: exp.TimeStrToTime):
     sql = timestrtotime_sql(self, expression)
     if expression.args.get("zone"):
         # If there is a timezone, produce an expression like:
+        # タイムゾーンがある場合は、次のような式を作成します。
         # CAST('2020-01-01 12:13:14-08:00' AS DATETIMEOFFSET) AT TIME ZONE 'UTC'
         # If you dont have AT TIME ZONE 'UTC', wrapping that expression in another cast back to DATETIME2 just drops the timezone information
+        # AT TIME ZONE 'UTC' がない場合、この式を DATETIME2 への別のキャストで囲むと、タイムゾーン情報が削除されるだけです。
         return self.sql(exp.AtTimeZone(this=sql, zone=exp.Literal.string("UTC")))
     return sql
 
@@ -579,6 +594,7 @@ class TSQL(Dialect):
         }
 
         # T-SQL does not allow BEGIN to be used as an identifier
+        # T-SQLではBEGINを識別子として使用することはできません。
         ID_VAR_TOKENS = parser.Parser.ID_VAR_TOKENS - {TokenType.BEGIN}
         ALIAS_TOKENS = parser.Parser.ALIAS_TOKENS - {TokenType.BEGIN}
         TABLE_ALIAS_TOKENS = parser.Parser.TABLE_ALIAS_TOKENS - {TokenType.BEGIN}
@@ -673,6 +689,7 @@ class TSQL(Dialect):
         }
 
         # The DCOLON (::) operator serves as a scope resolution (exp.ScopeResolution) operator in T-SQL
+        # DCOLON (::)演算子は、T-SQLのスコープ解決(exp.ScopeResolution)演算子として機能します。
         COLUMN_OPERATORS = {
             **parser.Parser.COLUMN_OPERATORS,
             TokenType.DCOLON: lambda self, this, to: self.expression(exp.Cast, this=this, to=to)
@@ -703,6 +720,8 @@ class TSQL(Dialect):
         def _parse_dcolon(self) -> t.Optional[exp.Expression]:
             # We want to use _parse_types() if the first token after :: is a known type,
             # otherwise we could parse something like x::varchar(max) into a function
+            # ::の後の最初のトークンが既知の型である場合は_parse_types()を使用します。
+            # そうでない場合は、x::varchar(max)のようなものを関数に解析します。
             if self._match_set(self.TYPE_TOKENS, advance=False):
                 return self._parse_types()
 
@@ -750,6 +769,8 @@ class TSQL(Dialect):
             """
             T-SQL supports the syntax alias = expression in the SELECT's projection list,
             so we transform all parsed Selects to convert their EQ projections into Aliases.
+            T-SQL は SELECT の投影リストで構文 alias = expression をサポートしているため、
+            解析されたすべての SELECT を変換して、EQ 投影をエイリアスに変換します。
 
             See: https://learn.microsoft.com/en-us/sql/t-sql/queries/select-clause-transact-sql?view=sql-server-ver16#syntax
             """
@@ -866,6 +887,7 @@ class TSQL(Dialect):
                 table_identifier = table.this
                 if table_identifier.args.get("temporary"):
                     # Promote the temporary property from the Identifier to the Into expression
+                    # 一時プロパティを識別子からInto式に昇格する
                     t.cast(exp.Into, into).set("temporary", True)
 
             return into
@@ -1102,6 +1124,8 @@ class TSQL(Dialect):
             if isinstance(limit, exp.Fetch) and not offset:
                 # Dialects like Oracle can FETCH directly from a row set but
                 # T-SQL requires an ORDER BY + OFFSET clause in order to FETCH
+                # Oracleのような方言は行セットから直接FETCHできますが、
+                # T-SQLではFETCHするためにORDER BY + OFFSET句が必要です。
                 offset = exp.Offset(expression=exp.Literal.number(0))
                 expression.set("offset", offset)
 
@@ -1109,12 +1133,16 @@ class TSQL(Dialect):
                 if not expression.args.get("order"):
                     # ORDER BY is required in order to use OFFSET in a query, so we use
                     # a noop order by, since we don't really care about the order.
+                    # クエリで OFFSET を使用するには ORDER BY が必要ですが、順序は気にしないので、
+                    # noop order by を使用します。
                     # See: https://www.microsoftpressstore.com/articles/article.aspx?p=2314819
                     expression.order_by(exp.select(exp.null()).subquery(), copy=False)
 
                 if isinstance(limit, exp.Limit):
                     # TOP and OFFSET can't be combined, we need use FETCH instead of TOP
                     # we replace here because otherwise TOP would be generated in select_sql
+                    # TOPとOFFSETを組み合わせることはできません。ここで置き換えるTOPの代わりに
+                    # FETCHを使用する必要があります。そうしないと、select_sqlでTOPが生成されます。
                     limit.replace(exp.Fetch(direction="FIRST", count=limit.expression))
 
             return super().select_sql(expression)
@@ -1141,6 +1169,7 @@ class TSQL(Dialect):
                 return "OUTER APPLY"
 
             # TODO: perhaps we can check if the parent is a Join and transpile it appropriately
+            # TODO: 親が Join かどうかを確認し、適切にトランスパイルできるかもしれません
             self.unsupported("LATERAL clause is not supported.")
             return "LATERAL"
 
@@ -1198,6 +1227,7 @@ class TSQL(Dialect):
             this = expression.this
             if isinstance(this, exp.EQ) and not isinstance(this.left, exp.Parameter):
                 # T-SQL does not use '=' in SET command, except when the LHS is a variable.
+                # T-SQL では、LHS が変数である場合を除き、SET コマンドで '=' は使用されません。
                 return f"{self.sql(this.left)} {self.sql(this.right)}"
 
             return super().setitem_sql(expression)
@@ -1245,11 +1275,15 @@ class TSQL(Dialect):
                     # We've already preprocessed the Create expression to bubble up any nested CTEs,
                     # but CREATE VIEW actually requires the WITH clause to come after it so we need
                     # to amend the AST by moving the CTEs to the CREATE VIEW statement's query.
+                    # ネストされた CTE をバブルアップするために Create 式をすでに前処理しましたが、
+                    # CREATE VIEW では実際にはその後に WITH 句が必要なので、CTE を CREATE VIEW 
+                    # ステートメントのクエリに移動して AST を修正する必要があります。
                     ctas_expression.set("with_", with_.pop())
 
             table = expression.find(exp.Table)
 
             # Convert CTAS statement to SELECT .. INTO ..
+            # CTAS ステートメントを SELECT .. INTO .. に変換します
             if kind == "TABLE" and ctas_expression:
                 if isinstance(ctas_expression, exp.UNWRAPPED_QUERIES):
                     ctas_expression = ctas_expression.subquery()
@@ -1293,6 +1327,7 @@ class TSQL(Dialect):
         def into_sql(self, expression: exp.Into) -> str:
             if expression.args.get("temporary"):
                 # If the Into expression has a temporary property, push this down to the Identifier
+                # Into式に一時プロパティがある場合は、これを識別子にプッシュダウンします。
                 table = expression.find(exp.Table)
                 if table and isinstance(table.this, exp.Identifier):
                     table.this.set("temporary", True)

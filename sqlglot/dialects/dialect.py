@@ -68,7 +68,8 @@ UNESCAPED_SEQUENCES = {
 
 
 class Dialects(str, Enum):
-    """Dialects supported by SQLGLot."""
+    """Dialects supported by SQLGLot.
+    SQLGLot でサポートされている方言。"""
 
     DIALECT = ""
 
@@ -106,22 +107,28 @@ class Dialects(str, Enum):
 
 
 class NormalizationStrategy(str, AutoName):
-    """Specifies the strategy according to which identifiers should be normalized."""
+    """Specifies the strategy according to which identifiers should be normalized.
+    識別子を正規化する戦略を指定します。"""
 
     LOWERCASE = auto()
-    """Unquoted identifiers are lowercased."""
+    """Unquoted identifiers are lowercased.
+    引用符で囲まれていない識別子は小文字になります。"""
 
     UPPERCASE = auto()
-    """Unquoted identifiers are uppercased."""
+    """Unquoted identifiers are uppercased.
+    引用符で囲まれていない識別子は大文字になります。"""
 
     CASE_SENSITIVE = auto()
-    """Always case-sensitive, regardless of quotes."""
+    """Always case-sensitive, regardless of quotes.
+    引用符に関係なく、常に大文字と小文字が区別されます。"""
 
     CASE_INSENSITIVE = auto()
-    """Always case-insensitive (lowercase), regardless of quotes."""
+    """Always case-insensitive (lowercase), regardless of quotes.
+    引用符に関係なく、常に大文字と小文字を区別しません (小文字)。"""
 
     CASE_INSENSITIVE_UPPERCASE = auto()
-    """Always case-insensitive (uppercase), regardless of quotes."""
+    """Always case-insensitive (uppercase), regardless of quotes.
+    引用符に関係なく、常に大文字と小文字を区別しません。"""
 
 
 class Version(int):
@@ -133,6 +140,8 @@ class Version(int):
         else:
             # No version defined means we should support the latest engine semantics, so
             # the comparison to any specific version should yield that latest is greater
+            # バージョンが定義されていない場合は、最新のエンジンセマンティクスをサポートする必要があるため、
+            # 特定のバージョンと比較すると、最新のものの方が優れていることがわかります。
             v = sys.maxsize
 
         return super(Version, cls).__new__(cls, v)
@@ -171,6 +180,10 @@ class _Dialect(type):
         # We check that the key is an actual sqlglot module to avoid blindly importing
         # files. Custom user dialects need to be imported at the top-level package, in
         # order for them to be registered as soon as possible.
+        # このインポートにより、新しい方言がロードされ、登録されます。ファイルを盲目的に
+        # インポートすることを避けるため、キーが実際の sqlglot モジュールであることを確認します。
+        # カスタムユーザー方言は、できるだけ早く登録するために、トップレベルパッケージで
+        # インポートする必要があります。
         if key in DIALECT_MODULE_NAMES:
             importlib.import_module(f"sqlglot.dialects.{key}")
 
@@ -297,51 +310,65 @@ class _Dialect(type):
 
 class Dialect(metaclass=_Dialect):
     INDEX_OFFSET = 0
-    """The base index offset for arrays."""
+    """The base index offset for arrays.
+    配列の基本インデックス オフセット。"""
 
     WEEK_OFFSET = 0
-    """First day of the week in DATE_TRUNC(week). Defaults to 0 (Monday). -1 would be Sunday."""
+    """First day of the week in DATE_TRUNC(week). Defaults to 0 (Monday). -1 would be Sunday.
+    DATE_TRUNC(week)における週の最初の曜日。デフォルトは0（月曜日）です。-1は日曜日になります。"""
 
     UNNEST_COLUMN_ONLY = False
-    """Whether `UNNEST` table aliases are treated as column aliases."""
+    """Whether `UNNEST` table aliases are treated as column aliases.
+    `UNNEST` テーブルエイリアスが列エイリアスとして扱われるかどうか。"""
 
     ALIAS_POST_TABLESAMPLE = False
-    """Whether the table alias comes after tablesample."""
+    """Whether the table alias comes after tablesample.
+    テーブルエイリアスが tablesample の後に来るかどうか。"""
 
     TABLESAMPLE_SIZE_IS_PERCENT = False
-    """Whether a size in the table sample clause represents percentage."""
+    """Whether a size in the table sample clause represents percentage.
+    表のサンプル句のサイズがパーセンテージを表すかどうか。"""
 
     NORMALIZATION_STRATEGY = NormalizationStrategy.LOWERCASE
-    """Specifies the strategy according to which identifiers should be normalized."""
+    """Specifies the strategy according to which identifiers should be normalized.
+    識別子を正規化する戦略を指定します。"""
 
     IDENTIFIERS_CAN_START_WITH_DIGIT = False
-    """Whether an unquoted identifier can start with a digit."""
+    """Whether an unquoted identifier can start with a digit.
+    引用符で囲まれていない識別子が数字で始まることができるかどうか。"""
 
     DPIPE_IS_STRING_CONCAT = True
-    """Whether the DPIPE token (`||`) is a string concatenation operator."""
+    """Whether the DPIPE token (`||`) is a string concatenation operator.
+    DPIPE トークン (`||`) が文字列連結演算子であるかどうか。"""
 
     STRICT_STRING_CONCAT = False
-    """Whether `CONCAT`'s arguments must be strings."""
+    """Whether `CONCAT`'s arguments must be strings.
+    `CONCAT` の引数が文字列である必要があるかどうか。"""
 
     SUPPORTS_USER_DEFINED_TYPES = True
-    """Whether user-defined data types are supported."""
+    """Whether user-defined data types are supported.
+    ユーザー定義のデータ型がサポートされているかどうか。"""
 
     SUPPORTS_SEMI_ANTI_JOIN = True
-    """Whether `SEMI` or `ANTI` joins are supported."""
+    """Whether `SEMI` or `ANTI` joins are supported.
+    `SEMI` または `ANTI` 結合がサポートされているかどうか。"""
 
     SUPPORTS_COLUMN_JOIN_MARKS = False
-    """Whether the old-style outer join (+) syntax is supported."""
+    """Whether the old-style outer join (+) syntax is supported.
+    古いスタイルの外部結合 (+) 構文がサポートされているかどうか。"""
 
     COPY_PARAMS_ARE_CSV = True
-    """Separator of COPY statement parameters."""
+    """Separator of COPY statement parameters.
+    COPY ステートメント パラメータの区切り文字。"""
 
     NORMALIZE_FUNCTIONS: bool | str = "upper"
     """
     Determines how function names are going to be normalized.
-    Possible values:
-        "upper" or True: Convert names to uppercase.
-        "lower": Convert names to lowercase.
-        False: Disables function name normalization.
+    関数名をどのように正規化するかを決定します。
+    Possible values 可能な値:
+        "upper" or True: Convert names to uppercase. 名前を大文字に変換します。
+        "lower": Convert names to lowercase. 名前を小文字に変換します。
+        False: Disables function name normalization. 関数名の正規化を無効にします。
     """
 
     PRESERVE_ORIGINAL_NAMES: bool = False
@@ -349,18 +376,24 @@ class Dialect(metaclass=_Dialect):
     Whether the name of the function should be preserved inside the node's metadata,
     can be useful for roundtripping deprecated vs new functions that share an AST node
     e.g JSON_VALUE vs JSON_EXTRACT_SCALAR in BigQuery
+    関数の名前をノードのメタデータ内に保持するかどうか。これは、AST ノードを共有する非推奨の関数と
+    新しい関数のラウンドトリップに役立ちます (例: BigQuery の JSON_VALUE と JSON_EXTRACT_SCALAR)
     """
 
     LOG_BASE_FIRST: t.Optional[bool] = True
     """
     Whether the base comes first in the `LOG` function.
     Possible values: `True`, `False`, `None` (two arguments are not supported by `LOG`)
+    `LOG` 関数において底が最初に来るかどうか。
+    可能な値: `True`、`False`、`None` (`LOG` では 2 つの引数はサポートされていません)
     """
 
     NULL_ORDERING = "nulls_are_small"
     """
     Default `NULL` ordering method to use if not explicitly set.
     Possible values: `"nulls_are_small"`, `"nulls_are_large"`, `"nulls_are_last"`
+    明示的に設定されていない場合に使用するデフォルトの `NULL` 順序付け方法。
+    使用可能な値: `"nulls_are_small"`、`"nulls_are_large"`、`"nulls_are_last"`
     """
 
     TYPED_DIVISION = False
@@ -368,23 +401,30 @@ class Dialect(metaclass=_Dialect):
     Whether the behavior of `a / b` depends on the types of `a` and `b`.
     False means `a / b` is always float division.
     True means `a / b` is integer division if both `a` and `b` are integers.
+    `a / b` の動作が `a` と `b` の型に依存するかどうか。
+    False の場合、`a / b` は常に浮動小数点除算になります。
+    True の場合、`a` と `b` の両方が整数の場合、`a / b` は整数除算になります。
     """
 
     SAFE_DIVISION = False
-    """Whether division by zero throws an error (`False`) or returns NULL (`True`)."""
+    """Whether division by zero throws an error (`False`) or returns NULL (`True`).
+    ゼロ除算がエラー (`False`) をスローするか、NULL (`True`) を返すか。"""
 
     CONCAT_COALESCE = False
-    """A `NULL` arg in `CONCAT` yields `NULL` by default, but in some dialects it yields an empty string."""
+    """A `NULL` arg in `CONCAT` yields `NULL` by default, but in some dialects it yields an empty string.
+    `CONCAT` の `NULL` 引数はデフォルトで `NULL` を生成しますが、一部の方言では空の文字列を生成します。"""
 
     HEX_LOWERCASE = False
-    """Whether the `HEX` function returns a lowercase hexadecimal string."""
+    """Whether the `HEX` function returns a lowercase hexadecimal string.
+    `HEX` 関数が小文字の 16 進文字列を返すかどうか。"""
 
     DATE_FORMAT = "'%Y-%m-%d'"
     DATEINT_FORMAT = "'%Y%m%d'"
     TIME_FORMAT = "'%Y-%m-%d %H:%M:%S'"
 
     TIME_MAPPING: t.Dict[str, str] = {}
-    """Associates this dialect's time formats with their equivalent Python `strftime` formats."""
+    """Associates this dialect's time formats with their equivalent Python `strftime` formats.
+    この方言の時間形式を、同等の Python `strftime` 形式に関連付けます。"""
 
     # https://cloud.google.com/bigquery/docs/reference/standard-sql/format-elements#format_model_rules_date_time
     # https://docs.teradata.com/r/Teradata-Database-SQL-Functions-Operators-Expressions-and-Predicates/March-2017/Data-Type-Conversions/Character-to-DATE-Conversion/Forcing-a-FORMAT-on-CAST-for-Converting-Character-to-DATE
@@ -392,15 +432,20 @@ class Dialect(metaclass=_Dialect):
     """
     Helper which is used for parsing the special syntax `CAST(x AS DATE FORMAT 'yyyy')`.
     If empty, the corresponding trie will be constructed off of `TIME_MAPPING`.
+    特殊構文 `CAST(x AS DATE FORMAT 'yyyy')` を解析するために使用されるヘルパー。
+    空の場合、対応するトライは `TIME_MAPPING` から構築されます。
     """
 
     UNESCAPED_SEQUENCES: t.Dict[str, str] = {}
-    """Mapping of an escaped sequence (`\\n`) to its unescaped version (`\n`)."""
+    """Mapping of an escaped sequence (`\\n`) to its unescaped version (`\n`).
+    エスケープされたシーケンス (`\\n`) をエスケープされていないバージョン (`\n`) にマッピングします。"""
 
     PSEUDOCOLUMNS: t.Set[str] = set()
     """
     Columns that are auto-generated by the engine corresponding to this dialect.
     For example, such columns may be excluded from `SELECT *` queries.
+    この方言に対応するエンジンによって自動生成される列。
+    たとえば、このような列は `SELECT *` クエリから除外される場合があります。
     """
 
     PREFER_CTE_ALIAS_COLUMN = False
@@ -408,6 +453,8 @@ class Dialect(metaclass=_Dialect):
     Some dialects, such as Snowflake, allow you to reference a CTE column alias in the
     HAVING clause of the CTE. This flag will cause the CTE alias columns to override
     any projection aliases in the subquery.
+    Snowflakeなどの一部の方言では、CTEのHAVING句でCTE列のエイリアスを参照できます。
+    このフラグにより​​、CTEエイリアス列はサブクエリ内の射影エイリアスをオーバーライドします。
 
     For example,
         WITH y(c) AS (
@@ -424,11 +471,13 @@ class Dialect(metaclass=_Dialect):
     COPY_PARAMS_ARE_CSV = True
     """
     Whether COPY statement parameters are separated by comma or whitespace
+    COPY文のパラメータがコンマで区切られるか空白で区切られるか
     """
 
     FORCE_EARLY_ALIAS_REF_EXPANSION = False
     """
     Whether alias reference expansion (_expand_alias_refs()) should run before column qualification (_qualify_columns()).
+    エイリアス参照拡張 (_expand_alias_refs()) を列修飾 (_qualify_columns()) の前に実行するかどうか。
 
     For example:
         WITH data AS (
@@ -448,24 +497,33 @@ class Dialect(metaclass=_Dialect):
             my_id = 1
 
     In most dialects, "my_id" would refer to "data.my_id" across the query, except:
+    ほとんどの方言では、「my_id」はクエリ全体で「data.my_id」を参照しますが、次の例外があります。
         - BigQuery, which will forward the alias to GROUP BY + HAVING clauses i.e
           it resolves to "WHERE my_id = 1 GROUP BY id HAVING id = 1"
+          BigQuery はエイリアスを GROUP BY + HAVING 句に転送します。つまり、
+          「WHERE my_id = 1 GROUP BY id HAVING id = 1」に解決されます。
         - Clickhouse, which will forward the alias across the query i.e it resolves
-        to "WHERE id = 1 GROUP BY id HAVING id = 1"
+          to "WHERE id = 1 GROUP BY id HAVING id = 1"
+          Clickhouse はクエリ全体にエイリアスを転送します。つまり、
+          「WHERE id = 1 GROUP BY id HAVING id = 1」に解決されます。
     """
 
     EXPAND_ALIAS_REFS_EARLY_ONLY_IN_GROUP_BY = False
-    """Whether alias reference expansion before qualification should only happen for the GROUP BY clause."""
+    """Whether alias reference expansion before qualification should only happen for the GROUP BY clause.
+    修飾前のエイリアス参照の拡張が GROUP BY 句に対してのみ行われるかどうか。"""
 
     SUPPORTS_ORDER_BY_ALL = False
     """
     Whether ORDER BY ALL is supported (expands to all the selected columns) as in DuckDB, Spark3/Databricks
+    DuckDB、Spark3/Databricks のように ORDER BY ALL がサポートされているかどうか（選択したすべての列に展開されます）
     """
 
     HAS_DISTINCT_ARRAY_CONSTRUCTORS = False
     """
     Whether the ARRAY constructor is context-sensitive, i.e in Redshift ARRAY[1, 2, 3] != ARRAY(1, 2, 3)
     as the former is of type INT[] vs the latter which is SUPER
+    ARRAYコンストラクタがコンテキスト依存であるかどうか、つまりRedshiftではARRAY[1, 2, 3] != ARRAY(1, 2, 3)で
+    あるかどうかは、前者がINT[]型であるのに対し後者はSUPER型であるためである。
     """
 
     SUPPORTS_FIXED_SIZE_ARRAYS = False
@@ -473,35 +531,47 @@ class Dialect(metaclass=_Dialect):
     Whether expressions such as x::INT[5] should be parsed as fixed-size array defs/casts e.g.
     in DuckDB. In dialects which don't support fixed size arrays such as Snowflake, this should
     be interpreted as a subscript/index operator.
+    x::INT[5] のような式を、例えばDuckDBにおいて固定サイズの配列定義/キャストとして解析するかどうかを指定します。
+    Snowflakeのように固定サイズの配列をサポートしていない方言では、これは添字/インデックス演算子として解釈されます。
     """
 
     STRICT_JSON_PATH_SYNTAX = True
-    """Whether failing to parse a JSON path expression using the JSONPath dialect will log a warning."""
+    """Whether failing to parse a JSON path expression using the JSONPath dialect will log a warning.
+    JSONPath 方言を使用して JSON パス式を解析できない場合に警告がログに記録されるかどうか。"""
 
     ON_CONDITION_EMPTY_BEFORE_ERROR = True
-    """Whether "X ON EMPTY" should come before "X ON ERROR" (for dialects like T-SQL, MySQL, Oracle)."""
+    """Whether "X ON EMPTY" should come before "X ON ERROR" (for dialects like T-SQL, MySQL, Oracle).
+    「X ON EMPTY」が「X ON ERROR」の前に来るかどうか (T-SQL、MySQL、Oracle などの方言の場合)。"""
 
     ARRAY_AGG_INCLUDES_NULLS: t.Optional[bool] = True
-    """Whether ArrayAgg needs to filter NULL values."""
+    """Whether ArrayAgg needs to filter NULL values.
+    ArrayAgg が NULL 値をフィルタリングする必要があるかどうか。"""
 
     PROMOTE_TO_INFERRED_DATETIME_TYPE = False
     """
     This flag is used in the optimizer's canonicalize rule and determines whether x will be promoted
     to the literal's type in x::DATE < '2020-01-01 12:05:03' (i.e., DATETIME). When false, the literal
     is cast to x's type to match it instead.
+    このフラグはオプティマイザの正規化ルールで使用され、 x::DATE < '2020-01-01 12:05:03' において、
+    x をリテラルの型（つまり DATETIME）に昇格するかどうかを決定します。
+    false の場合、リテラルは x の型に一致するようにキャストされます。
     """
 
     SUPPORTS_VALUES_DEFAULT = True
-    """Whether the DEFAULT keyword is supported in the VALUES clause."""
+    """Whether the DEFAULT keyword is supported in the VALUES clause.
+    VALUES 句で DEFAULT キーワードがサポートされているかどうか。"""
 
     NUMBERS_CAN_BE_UNDERSCORE_SEPARATED = False
-    """Whether number literals can include underscores for better readability"""
+    """Whether number literals can include underscores for better readability
+    読みやすさを向上させるために数値リテラルにアンダースコアを含めることができるかどうか"""
 
     HEX_STRING_IS_INTEGER_TYPE: bool = False
-    """Whether hex strings such as x'CC' evaluate to integer or binary/blob type"""
+    """Whether hex strings such as x'CC' evaluate to integer or binary/blob type
+    x'CC' のような16進文字列が整数型かバイナリ/BLOB型か"""
 
     REGEXP_EXTRACT_DEFAULT_GROUP = 0
-    """The default value for the capturing group."""
+    """The default value for the capturing group.
+    キャプチャ グループの既定値。"""
 
     SET_OP_DISTINCT_BY_DEFAULT: t.Dict[t.Type[exp.Expression], t.Optional[bool]] = {
         exp.Except: True,
@@ -511,12 +581,16 @@ class Dialect(metaclass=_Dialect):
     """
     Whether a set operation uses DISTINCT by default. This is `None` when either `DISTINCT` or `ALL`
     must be explicitly specified.
+    集合演算でデフォルトでDISTINCTを使用するかどうか。
+    `DISTINCT`または`ALL`のいずれかを明示的に指定する必要がある場合は、`None`になります。
     """
 
     CREATABLE_KIND_MAPPING: dict[str, str] = {}
     """
     Helper for dialects that use a different name for the same creatable kind. For example, the Clickhouse
     equivalent of CREATE SCHEMA is CREATE DATABASE.
+    同じ作成可能な種類に対して異なる名前を使用する方言のためのヘルパーです。
+    例えば、Clickhouse では CREATE SCHEMA は CREATE DATABASE です。
     """
 
     ALTER_TABLE_SUPPORTS_CASCADE = False
@@ -524,27 +598,37 @@ class Dialect(metaclass=_Dialect):
     Hive by default does not update the schema of existing partitions when a column is changed.
     the CASCADE clause is used to indicate that the change should be propagated to all existing partitions.
     the Spark dialect, while derived from Hive, does not support the CASCADE clause.
+    Hive はデフォルトでは、列が変更されても既存のパーティションのスキーマを更新しません。
+    CASCADE 句は、変更を既存のすべてのパーティションに伝播することを示すために使用されます。
+    Spark 方言は Hive から派生していますが、CASCADE 句をサポートしていません。
     """
 
     # Whether ADD is present for each column added by ALTER TABLE
+    # ALTER TABLEによって追加された各列にADDが存在するかどうか
     ALTER_TABLE_ADD_REQUIRED_FOR_EACH_COLUMN = True
 
     # Whether the value/LHS of the TRY_CAST(<value> AS <type>) should strictly be a
     # STRING type (Snowflake's case) or can be of any type
+    # TRY_CAST(<value> AS <type>) の値/LHS が厳密に STRING 型である必要があるか
+    #  (Snowflake の場合)、または任意の型にできるか
     TRY_CAST_REQUIRES_STRING: t.Optional[bool] = None
 
     # Whether the double negation can be applied
     # Not safe with MySQL and SQLite due to type coercion (may not return boolean)
+    # 二重否定を適用できるかどうか。
+    # 型強制のためMySQLおよびSQLiteでは安全ではありません（booleanを返さない可能性があります）。
     SAFE_TO_ELIMINATE_DOUBLE_NEGATION = True
 
     BYTE_STRING_IS_BYTES_TYPE: bool = False
     """
     Whether byte string literals (ex: BigQuery's b'...') are typed as BYTES/BINARY
+    バイト文字列リテラル（例：BigQuery の b'...'）が BYTES/BINARY 型かどうか
     """
 
     UUID_IS_STRING_TYPE: bool = False
     """
     Whether a UUID is considered a string or a UUID type.
+    UUID が文字列と見なされるか、UUID タイプと見なされるか。
     """
 
     # --- Autofilled ---
@@ -555,6 +639,7 @@ class Dialect(metaclass=_Dialect):
     generator_class = Generator
 
     # A trie of the time_mapping keys
+    # time_mappingキーのトライ
     TIME_TRIE: t.Dict = {}
     FORMAT_TRIE: t.Dict = {}
 
@@ -568,6 +653,7 @@ class Dialect(metaclass=_Dialect):
     ESCAPED_SEQUENCES: t.Dict[str, str] = {}
 
     # Delimiters for string literals and identifiers
+    # 文字列リテラルと識別子の区切り文字
     QUOTE_START = "'"
     QUOTE_END = "'"
     IDENTIFIER_START = '"'
@@ -576,6 +662,7 @@ class Dialect(metaclass=_Dialect):
     VALID_INTERVAL_UNITS: t.Set[str] = set()
 
     # Delimiters for bit, hex, byte and unicode literals
+    # ビット、16進数、バイト、Unicodeリテラルの区切り文字
     BIT_START: t.Optional[str] = None
     BIT_END: t.Optional[str] = None
     HEX_START: t.Optional[str] = None
@@ -680,12 +767,15 @@ class Dialect(metaclass=_Dialect):
     }
 
     # Specifies what types a given type can be coerced into
+    # 特定の型をどのような型に強制変換できるかを指定します
     COERCES_TO: t.Dict[exp.DataType.Type, t.Set[exp.DataType.Type]] = {}
 
     # Specifies type inference & validation rules for expressions
+    # 式の型推論と検証ルールを指定します
     EXPRESSION_METADATA = EXPRESSION_METADATA.copy()
 
     # Determines the supported Dialect instance settings
+    # サポートされている方言インスタンスの設定を決定します
     SUPPORTED_SETTINGS = {
         "normalization_strategy",
         "version",
@@ -695,11 +785,15 @@ class Dialect(metaclass=_Dialect):
     def get_or_raise(cls, dialect: DialectType) -> Dialect:
         """
         Look up a dialect in the global dialect registry and return it if it exists.
+        グローバル方言レジストリで方言を検索し、存在する場合はそれを返します。
 
         Args:
             dialect: The target dialect. If this is a string, it can be optionally followed by
                 additional key-value pairs that are separated by commas and are used to specify
                 dialect settings, such as whether the dialect's identifiers are case-sensitive.
+                ターゲット方言。文字列の場合、オプションでカンマ区切りのキーと値のペアを追加できます。
+                これらのペアは、方言の識別子が大文字と小文字を区別するかどうかなど、
+                方言の設定を指定するために使用されます。
 
         Example:
             >>> dialect = dialect_class = get_or_raise("duckdb")
@@ -707,6 +801,7 @@ class Dialect(metaclass=_Dialect):
 
         Returns:
             The corresponding Dialect instance.
+            対応する方言インスタンス。
         """
 
         if not dialect:
@@ -726,6 +821,7 @@ class Dialect(metaclass=_Dialect):
 
                     if len(pair) == 1:
                         # Default initialize standalone settings to True
+                        # デフォルトではスタンドアロン設定はTrueに初期化します
                         value = True
                     elif len(pair) == 2:
                         value = pair[1].strip()
@@ -751,7 +847,8 @@ class Dialect(metaclass=_Dialect):
     def format_time(
         cls, expression: t.Optional[str | exp.Expression]
     ) -> t.Optional[exp.Expression]:
-        """Converts a time format in this dialect to its equivalent Python `strftime` format."""
+        """Converts a time format in this dialect to its equivalent Python `strftime` format.
+        この方言の時間形式を、同等の Python `strftime` 形式に変換します。"""
         if isinstance(expression, str):
             return exp.Literal.string(
                 # the time formats are quoted
@@ -779,30 +876,44 @@ class Dialect(metaclass=_Dialect):
 
     def __eq__(self, other: t.Any) -> bool:
         # Does not currently take dialect state into account
+        # 方言の状態は現在考慮されていません
         return type(self) == other
 
     def __hash__(self) -> int:
         # Does not currently take dialect state into account
+        # 方言の状態は現在考慮されていません
         return hash(type(self))
 
     def normalize_identifier(self, expression: E) -> E:
         """
         Transforms an identifier in a way that resembles how it'd be resolved by this dialect.
+        この方言で解決される方法に似た方法で識別子を変換します。
 
         For example, an identifier like `FoO` would be resolved as `foo` in Postgres, because it
         lowercases all unquoted identifiers. On the other hand, Snowflake uppercases them, so
         it would resolve it as `FOO`. If it was quoted, it'd need to be treated as case-sensitive,
         and so any normalization would be prohibited in order to avoid "breaking" the identifier.
+        例えば、`FoO` のような識別子は、Postgres では引用符で囲まれていない識別子を小文字に変換するため、
+        `foo` として解決されます。一方、Snowflake では引用符で囲まれていない識別子を大文字に変換するため、
+        `FOO` として解決されます。引用符で囲まれている場合は、大文字と小文字を区別する必要があり、
+        識別子の「破損」を防ぐため、正規化は禁止されます。
 
         There are also dialects like Spark, which are case-insensitive even when quotes are
         present, and dialects like MySQL, whose resolution rules match those employed by the
         underlying operating system, for example they may always be case-sensitive in Linux.
+        また、引用符があっても大文字と小文字を区別しない Spark のような方言や、解決ルールが基盤となる
+        オペレーティング システムで採用されているルールと一致する MySQL のような方言 (たとえば、Linux 
+        では常に大文字と小文字が区別される) もあります。
 
         Finally, the normalization behavior of some engines can even be controlled through flags,
         like in Redshift's case, where users can explicitly set enable_case_sensitive_identifier.
+        最後に、一部のエンジンの正規化動作は、Redshift の場合のようにユーザーが 
+        enable_case_sensitive_identifier を明示的に設定できるなど、フラグを通じて制御することもできます。
 
         SQLGlot aims to understand and handle all of these different behaviors gracefully, so
         that it can analyze queries in the optimizer and successfully capture their semantics.
+        SQLGlot は、これらのさまざまな動作をすべて適切に理解して処理し、オプティマイザーでクエリを分析して
+        そのセマンティクスを正常に取得できるようにすることを目的としています。
         """
         if (
             isinstance(expression, exp.Identifier)
@@ -830,7 +941,8 @@ class Dialect(metaclass=_Dialect):
         return expression
 
     def case_sensitive(self, text: str) -> bool:
-        """Checks if text contains any case sensitive characters, based on the dialect's rules."""
+        """Checks if text contains any case sensitive characters, based on the dialect's rules.
+        方言のルールに基づいて、テキストに大文字と小文字を区別する文字が含まれているかどうかを確認します。"""
         if self.normalization_strategy is NormalizationStrategy.CASE_INSENSITIVE:
             return False
 
@@ -843,15 +955,19 @@ class Dialect(metaclass=_Dialect):
 
     def can_identify(self, text: str, identify: str | bool = "safe") -> bool:
         """Checks if text can be identified given an identify option.
+        識別オプションを指定してテキストを識別できるかどうかを確認します。
 
         Args:
-            text: The text to check.
+            text: The text to check. チェックするテキスト。
             identify:
-                `"always"` or `True`: Always returns `True`.
+                `"always"` or `True`: Always returns `True`. 
+                    常に `True` を返します。
                 `"safe"`: Only returns `True` if the identifier is case-insensitive.
+                    識別子の大文字と小文字が区別されない場合にのみ `True` を返します。
 
         Returns:
             Whether the given text can be identified.
+            指定されたテキストを識別できるかどうか。
         """
         if identify is True or identify == "always":
             return True
@@ -864,11 +980,15 @@ class Dialect(metaclass=_Dialect):
     def quote_identifier(self, expression: E, identify: bool = True) -> E:
         """
         Adds quotes to a given identifier.
+        指定された識別子に引用符を追加します。
 
         Args:
             expression: The expression of interest. If it's not an `Identifier`, this method is a no-op.
+                関心のある式。`Identifier` でない場合、このメソッドは何も行いません。
             identify: If set to `False`, the quotes will only be added if the identifier is deemed
                 "unsafe", with respect to its characters and this dialect's normalization strategy.
+                `False` に設定すると、識別子の文字とこの方言の正規化戦略に関して、
+                識別子が「安全でない」と判断された場合にのみ引用符が追加されます。
         """
         if isinstance(expression, exp.Identifier) and not isinstance(expression.parent, exp.Func):
             name = expression.this
@@ -1098,15 +1218,16 @@ def var_map_sql(
 def build_formatted_time(
     exp_class: t.Type[E], dialect: str, default: t.Optional[bool | str] = None
 ) -> t.Callable[[t.List], E]:
-    """Helper used for time expressions.
+    """Helper used for time expressions. 時間表現に使用されるヘルパー。
 
     Args:
-        exp_class: the expression class to instantiate.
-        dialect: target sql dialect.
-        default: the default format, True being time.
+        exp_class: the expression class to instantiate. インスタンス化する式クラス。
+        dialect: target sql dialect. ターゲット SQL 方言。
+        default: the default format, True being time. デフォルトの形式で、True は時間です。
 
     Returns:
         A callable that can be used to return the appropriately formatted time expression.
+        適切にフォーマットされた時間表現を返すために使用できる呼び出し可能オブジェクト。
     """
 
     def _builder(args: t.List):
@@ -1128,6 +1249,7 @@ def time_format(
         """
         Returns the time format for a given expression, unless it's equivalent
         to the default time format of the dialect of interest.
+        対象の方言のデフォルトの時間形式と同等でない限り、指定された式の時間形式を返します。
         """
         time_format = self.format_time(expression)
         return time_format if time_format != Dialect.get_or_raise(dialect).TIME_FORMAT else None
@@ -1227,6 +1349,7 @@ def no_timestamp_sql(self: Generator, expression: exp.Timestamp) -> str:
 
 def no_time_sql(self: Generator, expression: exp.Time) -> str:
     # Transpile BQ's TIME(timestamp, zone) to CAST(TIMESTAMPTZ <timestamp> AT TIME ZONE <zone> AS TIME)
+    # BQ の TIME(timestamp, zone) を CAST(TIMESTAMPTZ <timestamp> AT TIME ZONE <zone> AS TIME) にトランスパイルします。
     this = exp.cast(expression.this, exp.DataType.Type.TIMESTAMPTZ)
     expr = exp.cast(
         exp.AtTimeZone(this=this, zone=expression.args.get("zone")), exp.DataType.Type.TIME
@@ -1240,6 +1363,7 @@ def no_datetime_sql(self: Generator, expression: exp.Datetime) -> str:
 
     if expr.name.lower() in TIMEZONES:
         # Transpile BQ's DATETIME(timestamp, zone) to CAST(TIMESTAMPTZ <timestamp> AT TIME ZONE <zone> AS TIMESTAMP)
+        # BQ の DATETIME(timestamp, zone) を CAST(TIMESTAMPTZ <timestamp> AT TIME ZONE <zone> AS TIMESTAMP) にトランスパイルします。
         this = exp.cast(this, exp.DataType.Type.TIMESTAMPTZ)
         this = exp.cast(exp.AtTimeZone(this=this, zone=expr), exp.DataType.Type.TIMESTAMP)
         return self.sql(this)
@@ -1293,6 +1417,7 @@ def datestrtodate_sql(self: Generator, expression: exp.DateStrToDate) -> str:
 
 
 # Used for Presto and Duckdb which use functions that don't support charset, and assume utf-8
+# 文字セットをサポートせず、utf-8 を前提とする関数を使用する Presto および Duckdb で使用されます。
 def encode_decode_sql(
     self: Generator, expression: exp.Expression, name: str, replace: bool = True
 ) -> str:
@@ -1330,6 +1455,7 @@ def trim_sql(self: Generator, expression: exp.Trim, default_trim_type: str = "")
     collation = self.sql(expression, "collation")
 
     # Use TRIM/LTRIM/RTRIM syntax if the expression isn't database-specific
+    # 式がデータベース固有でない場合は、TRIM/LTRIM/RTRIM構文を使用します。
     if not remove_chars:
         return self.trim_sql(expression)
 
@@ -1365,6 +1491,7 @@ def regexp_extract_sql(
     group = expression.args.get("group")
 
     # Do not render group if it's the default value for this dialect
+    # この方言のデフォルト値の場合はグループをレンダリングしない
     if group and group.name == str(self.dialect.REGEXP_EXTRACT_DEFAULT_GROUP):
         group = None
 
@@ -1389,6 +1516,10 @@ def pivot_column_names(aggregations: t.List[exp.Expression], dialect: DialectTyp
             (e.g. col_avg(foo)). We need to unquote identifiers because they're going to
             be quoted in the base parser's `_parse_pivot` method, due to `to_identifier`.
             Otherwise, we'd end up with `col_avg(`foo`)` (notice the double quotes).
+            このケースは、エイリアスを接尾辞として使用しない集計に相当します（例：col_avg(foo)）。
+            識別子は、`to_identifier` によりベースパーサーの `_parse_pivot` メソッドで引用符で
+            囲まれるため、引用符を外す必要があります。
+            そうしないと、`col_avg(`foo`)` となってしまいます（二重引用符に注意してください）。
             """
             agg_all_unquoted = agg.transform(
                 lambda node: (
@@ -1407,6 +1538,7 @@ def binary_from_function(expr_type: t.Type[B]) -> t.Callable[[t.List], B]:
 
 
 # Used to represent DATE_TRUNC in Doris, Postgres and Starrocks dialects
+# Doris、Postgres、Starrocks方言でDATE_TRUNCを表すために使用されます。
 def build_timestamp_trunc(args: t.List) -> exp.TimestampTrunc:
     return exp.TimestampTrunc(this=seq_get(args, 1), unit=seq_get(args, 0))
 
@@ -1454,6 +1586,8 @@ def ts_or_ds_add_cast(expression: exp.TsOrDsAdd) -> exp.TsOrDsAdd:
     if return_type.is_type(exp.DataType.Type.DATE):
         # If we need to cast to a DATE, we cast to TIMESTAMP first to make sure we
         # can truncate timestamp strings, because some dialects can't cast them to DATE
+        # DATEにキャストする必要がある場合は、タイムスタンプ文字列を切り捨てることができることを確認するために、
+        # 最初にTIMESTAMPにキャストします。一部の方言では、タイムスタンプ文字列をDATEにキャストできないためです。
         this = exp.cast(this, exp.DataType.Type.TIMESTAMP)
 
     expression.this.replace(exp.cast(this, return_type))
@@ -1489,6 +1623,7 @@ def date_delta_to_binary_interval_op(
                 to_type = expression.return_type
             elif this.is_string:
                 # Cast string literals (i.e function parameters) to the appropriate type for +/- interval to work
+                # +/- 間隔が機能するには、文字列リテラル（つまり関数パラメータ）を適切な型にキャストします。
                 to_type = (
                     exp.DataType.Type.DATETIME
                     if isinstance(expression, (exp.DatetimeAdd, exp.DatetimeSub))
@@ -1559,7 +1694,8 @@ def no_last_day_sql(self: Generator, expression: exp.LastDay) -> str:
 
 
 def merge_without_target_sql(self: Generator, expression: exp.Merge) -> str:
-    """Remove table refs from columns in when statements."""
+    """Remove table refs from columns in when statements.
+    when ステートメント内の列からテーブル参照を削除します。"""
     alias = expression.this.args.get("alias")
 
     def normalize(identifier: t.Optional[exp.Identifier]) -> t.Optional[str]:
@@ -1574,6 +1710,9 @@ def merge_without_target_sql(self: Generator, expression: exp.Merge) -> str:
         # only remove the target table names from certain parts of WHEN MATCHED / WHEN NOT MATCHED
         # they are still valid in the <condition>, the right hand side of each UPDATE and the VALUES part
         # (not the column list) of the INSERT
+        # WHEN MATCHED / WHEN NOT MATCHED の特定の部分からのみターゲット テーブル名を削除します。
+        # <condition>、各 UPDATE の右側、および INSERT の VALUES 部分 (列リストではない) では、
+        # ターゲット テーブル名は引き続き有効です。
         then: exp.Insert | exp.Update | None = when.args.get("then")
         if then:
             if isinstance(then, exp.Update):
@@ -1605,6 +1744,7 @@ def build_json_extract_path(
         for arg in args[1:]:
             if not isinstance(arg, exp.Literal):
                 # We use the fallback parser because we can't really transpile non-literals safely
+                # 非リテラルを安全にトランスパイルできないため、フォールバックパーサーを使用します。
                 return expr_type.from_arg_list(args)
 
             text = arg.name
@@ -1617,6 +1757,7 @@ def build_json_extract_path(
                 segments.append(exp.JSONPathKey(this=text))
 
         # This is done to avoid failing in the expression validator due to the arg count
+        # これは、引数の数によって式検証が失敗することを避けるために行われます。
         del args[2:]
         kwargs = {
             "this": seq_get(args, 0),
@@ -1730,6 +1871,8 @@ def build_timestamp_from_parts(args: t.List) -> exp.Func:
     if len(args) == 2:
         # Other dialects don't have the TIMESTAMP_FROM_PARTS(date, time) concept,
         # so we parse this into Anonymous for now instead of introducing complexity
+        # 他の方言にはTIMESTAMP_FROM_PARTS(日付、時刻)という概念がないので、
+        # 複雑さを導入する代わりに、今のところこれをAnonymousに解析します。
         return exp.Anonymous(this="TIMESTAMP_FROM_PARTS", expressions=args)
 
     return exp.TimestampFromParts.from_arg_list(args)
@@ -1926,6 +2069,8 @@ def regexp_replace_global_modifier(expression: exp.RegexpReplace) -> exp.Express
             # Append 'g' to the modifiers if they are not provided since
             # the semantics of REGEXP_REPLACE from the input dialect
             # is to replace all occurrences of the pattern.
+            # 入力方言からの REGEXP_REPLACE のセマンティクスはパターンのすべての出現を
+            # 置き換えることであるため、修飾子が指定されていない場合は修飾子に 'g' を追加します。
             value = "" if not modifiers else modifiers.name
             modifiers = exp.Literal.string(value + "g")
 
