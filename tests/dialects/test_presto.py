@@ -293,7 +293,7 @@ class TestPresto(Validator):
         self.validate_all(
             "DATE_FORMAT(x, '%Y-%m-%d %H:%i:%S')",
             write={
-                "bigquery": "FORMAT_DATE('%Y-%m-%d %H:%M:%S', x)",
+                "bigquery": "FORMAT_DATE('%F %T', x)",
                 "duckdb": "STRFTIME(x, '%Y-%m-%d %H:%M:%S')",
                 "presto": "DATE_FORMAT(x, '%Y-%m-%d %T')",
                 "hive": "DATE_FORMAT(x, 'yyyy-MM-dd HH:mm:ss')",
@@ -492,6 +492,18 @@ class TestPresto(Validator):
             "DATE_ADD('MINUTE', CAST(FLOOR(CAST(EXTRACT(MINUTE FROM CURRENT_TIMESTAMP) AS DOUBLE) / NULLIF(30, 0)) * 30 AS BIGINT), col)",
             read={
                 "spark": "TIMESTAMPADD(MINUTE, FLOOR(EXTRACT(MINUTE FROM CURRENT_TIMESTAMP)/30)*30, col)",
+            },
+        )
+
+        self.validate_all(
+            "SELECT WEEK_OF_YEAR(y)",
+            read={
+                "presto": "SELECT WEEK(y)",
+            },
+            write={
+                "spark": "SELECT WEEKOFYEAR(y)",
+                "presto": "SELECT WEEK_OF_YEAR(y)",
+                "trino": "SELECT WEEK_OF_YEAR(y)",
             },
         )
 
@@ -706,6 +718,14 @@ class TestPresto(Validator):
         self.validate_identity("SELECT * FROM x OFFSET 1 LIMIT 1")
         self.validate_identity("SELECT * FROM x OFFSET 1 FETCH FIRST 1 ROWS ONLY")
         self.validate_identity("SELECT BOOL_OR(a > 10) FROM asd AS T(a)")
+
+        # Numeric TRUNCATE
+        self.validate_identity("TRUNCATE(3.14159, 2)").assert_is(exp.Trunc)
+        self.validate_identity("TRUNCATE(3.14159)").assert_is(exp.Trunc)
+        self.validate_all(
+            "TRUNCATE(3.14159, 2)",
+            read={"postgres": "TRUNC(3.14159, 2)"},
+        )
         self.validate_identity("SELECT * FROM (VALUES (1))")
         self.validate_identity("START TRANSACTION READ WRITE, ISOLATION LEVEL SERIALIZABLE")
         self.validate_identity("START TRANSACTION ISOLATION LEVEL REPEATABLE READ")
@@ -1125,6 +1145,10 @@ class TestPresto(Validator):
             },
         )
 
+        self.validate_identity(
+            "SELECT * FROM foo FOR TIMESTAMP AS OF CAST('2020-01-01 00:00:00' AS TIMESTAMP) AS bar"
+        )
+
     def test_encode_decode(self):
         self.validate_identity("FROM_UTF8(x, y)")
 
@@ -1365,5 +1389,13 @@ MATCH_RECOGNIZE (
                 "presto": "BITWISE_XOR_AGG(x)",
                 "trino": "BITWISE_XOR_AGG(x)",
                 "oracle": "BITWISE_XOR_AGG(x)",
+            },
+        )
+
+    def test_initcap(self):
+        self.validate_all(
+            "INITCAP(col)",
+            write={
+                "presto": "REGEXP_REPLACE(col, '(\\w)(\\w*)', x -> UPPER(x[1]) || LOWER(x[2]))",
             },
         )

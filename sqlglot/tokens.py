@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import os
 import typing as t
-from enum import auto
+from enum import IntEnum, auto
 
 from sqlglot.errors import SqlglotError, TokenError
-from sqlglot.helper import AutoName
 from sqlglot.trie import TrieResult, in_trie, new_trie
 
 if t.TYPE_CHECKING:
@@ -25,7 +24,7 @@ except ImportError:
     USE_RS_TOKENIZER = False
 
 
-class TokenType(AutoName):
+class TokenType(IntEnum):
     L_PAREN = auto()
     R_PAREN = auto()
     L_BRACKET = auto()
@@ -41,6 +40,7 @@ class TokenType(AutoName):
     DCOLON = auto()
     DCOLONDOLLAR = auto()
     DCOLONPERCENT = auto()
+    DCOLONQMARK = auto()
     DQMARK = auto()
     SEMICOLON = auto()
     STAR = auto()
@@ -67,7 +67,7 @@ class TokenType(AutoName):
     DPIPE_SLASH = auto()
     CARET = auto()
     CARET_AT = auto()
-    TILDA = auto()
+    TILDE = auto()
     ARROW = auto()
     DARROW = auto()
     FARROW = auto()
@@ -82,7 +82,11 @@ class TokenType(AutoName):
     PARAMETER = auto()
     SESSION = auto()
     SESSION_PARAMETER = auto()
+    SESSION_USER = auto()
     DAMP = auto()
+    AMP_LT = auto()
+    AMP_GT = auto()
+    ADJACENT = auto()
     XOR = auto()
     DSTAR = auto()
     QMARK_AMP = auto()
@@ -131,6 +135,7 @@ class TokenType(AutoName):
     UINT = auto()
     BIGINT = auto()
     UBIGINT = auto()
+    BIGNUM = auto()  # unlimited precision int
     INT128 = auto()
     UINT128 = auto()
     INT256 = auto()
@@ -143,6 +148,7 @@ class TokenType(AutoName):
     DECIMAL64 = auto()
     DECIMAL128 = auto()
     DECIMAL256 = auto()
+    DECFLOAT = auto()
     UDECIMAL = auto()
     BIGDECIMAL = auto()
     CHAR = auto()
@@ -165,6 +171,7 @@ class TokenType(AutoName):
     JSONB = auto()
     TIME = auto()
     TIMETZ = auto()
+    TIME_NS = auto()
     TIMESTAMP = auto()
     TIMESTAMPTZ = auto()
     TIMESTAMPLTZ = auto()
@@ -198,6 +205,9 @@ class TokenType(AutoName):
     POINT = auto()
     RING = auto()
     LINESTRING = auto()
+    LOCALTIME = auto()
+    LOCALTIMESTAMP = auto()
+    SYSTIMESTAMP = auto()
     MULTILINESTRING = auto()
     POLYGON = auto()
     MULTIPOLYGON = auto()
@@ -270,6 +280,8 @@ class TokenType(AutoName):
     CURRENT_TIME = auto()
     CURRENT_TIMESTAMP = auto()
     CURRENT_USER = auto()
+    CURRENT_ROLE = auto()
+    CURRENT_CATALOG = auto()
     DECLARE = auto()
     DEFAULT = auto()
     DELETE = auto()
@@ -289,6 +301,7 @@ class TokenType(AutoName):
     EXISTS = auto()
     FALSE = auto()
     FETCH = auto()
+    FILE = auto()
     FILE_FORMAT = auto()
     FILTER = auto()
     FINAL = auto()
@@ -358,6 +371,8 @@ class TokenType(AutoName):
     ORDER_SIBLINGS_BY = auto()
     ORDERED = auto()
     ORDINALITY = auto()
+    OUT = auto()
+    INOUT = auto()
     OUTER = auto()
     OVER = auto()
     OVERLAPS = auto()
@@ -377,6 +392,7 @@ class TokenType(AutoName):
     PUT = auto()
     QUALIFY = auto()
     QUOTE = auto()
+    QDCOLON = auto()
     RANGE = auto()
     RECURSIVE = auto()
     REFRESH = auto()
@@ -415,6 +431,7 @@ class TokenType(AutoName):
     THEN = auto()
     TRUE = auto()
     TRUNCATE = auto()
+    TRIGGER = auto()
     UNCACHE = auto()
     UNION = auto()
     UNNEST = auto()
@@ -423,6 +440,7 @@ class TokenType(AutoName):
     USE = auto()
     USING = auto()
     VALUES = auto()
+    VARIADIC = auto()
     VIEW = auto()
     SEMANTIC_VIEW = auto()
     VOLATILE = auto()
@@ -445,6 +463,9 @@ class TokenType(AutoName):
 
     # sentinel
     HIVE_TOKEN_STREAM = auto()
+
+    def __str__(self) -> str:
+        return f"TokenType.{self.name}"
 
 
 _ALL_TOKEN_TYPES = list(TokenType)
@@ -504,7 +525,12 @@ class Token:
         self.comments = [] if comments is None else comments
 
     def __repr__(self) -> str:
-        attributes = ", ".join(f"{k}: {getattr(self, k)}" for k in self.__slots__)
+        attributes = ", ".join(
+            f"{k}: TokenType.{self.token_type.name}"
+            if k == "token_type"
+            else f"{k}: {getattr(self, k)}"
+            for k in self.__slots__
+        )
         return f"<Token {attributes}>"
 
 
@@ -539,7 +565,12 @@ class _Tokenizer(type):
             **_quotes_to_format(TokenType.UNICODE_STRING, klass.UNICODE_STRINGS),
         }
 
+        if "BYTE_STRING_ESCAPES" not in klass.__dict__:
+            klass.BYTE_STRING_ESCAPES = klass.STRING_ESCAPES.copy()
+
         klass._STRING_ESCAPES = set(klass.STRING_ESCAPES)
+        klass._BYTE_STRING_ESCAPES = set(klass.BYTE_STRING_ESCAPES)
+        klass._ESCAPE_FOLLOW_CHARS = set(klass.ESCAPE_FOLLOW_CHARS)
         klass._IDENTIFIER_ESCAPES = set(klass.IDENTIFIER_ESCAPES)
         klass._COMMENTS = {
             **dict(
@@ -564,13 +595,13 @@ class _Tokenizer(type):
 
         if USE_RS_TOKENIZER:
             settings = RsTokenizerSettings(
-                white_space={k: _TOKEN_TYPE_TO_INDEX[v] for k, v in klass.WHITE_SPACE.items()},
                 single_tokens={k: _TOKEN_TYPE_TO_INDEX[v] for k, v in klass.SINGLE_TOKENS.items()},
                 keywords={k: _TOKEN_TYPE_TO_INDEX[v] for k, v in klass.KEYWORDS.items()},
                 numeric_literals=klass.NUMERIC_LITERALS,
                 identifiers=klass._IDENTIFIERS,
                 identifier_escapes=klass._IDENTIFIER_ESCAPES,
                 string_escapes=klass._STRING_ESCAPES,
+                byte_string_escapes=klass._BYTE_STRING_ESCAPES,
                 quotes=klass._QUOTES,
                 format_strings={
                     k: (v1, _TOKEN_TYPE_TO_INDEX[v2])
@@ -591,9 +622,11 @@ class _Tokenizer(type):
                 tokens_preceding_hint={
                     _TOKEN_TYPE_TO_INDEX[v] for v in klass.TOKENS_PRECEDING_HINT
                 },
+                escape_follow_chars=klass._ESCAPE_FOLLOW_CHARS,
             )
             token_types = RsTokenTypeSettings(
                 bit_string=_TOKEN_TYPE_TO_INDEX[TokenType.BIT_STRING],
+                byte_string=_TOKEN_TYPE_TO_INDEX[TokenType.BYTE_STRING],
                 break_=_TOKEN_TYPE_TO_INDEX[TokenType.BREAK],
                 dcolon=_TOKEN_TYPE_TO_INDEX[TokenType.DCOLON],
                 heredoc_string=_TOKEN_TYPE_TO_INDEX[TokenType.HEREDOC_STRING],
@@ -640,7 +673,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "/": TokenType.SLASH,
         "\\": TokenType.BACKSLASH,
         "*": TokenType.STAR,
-        "~": TokenType.TILDA,
+        "~": TokenType.TILDE,
         "?": TokenType.PLACEHOLDER,
         "@": TokenType.PARAMETER,
         "#": TokenType.HASH,
@@ -660,7 +693,9 @@ class Tokenizer(metaclass=_Tokenizer):
     IDENTIFIERS: t.List[str | t.Tuple[str, str]] = ['"']
     QUOTES: t.List[t.Tuple[str, str] | str] = ["'"]
     STRING_ESCAPES = ["'"]
+    BYTE_STRING_ESCAPES: t.List[str] = []
     VAR_SINGLE_TOKENS: t.Set[str] = set()
+    ESCAPE_FOLLOW_CHARS: t.List[str] = []
 
     # The strings in this list can always be used as escapes, regardless of the surrounding
     # identifier delimiters. By default, the closing delimiter is assumed to also act as an
@@ -695,8 +730,10 @@ class Tokenizer(metaclass=_Tokenizer):
     _IDENTIFIER_ESCAPES: t.Set[str] = set()
     _QUOTES: t.Dict[str, str] = {}
     _STRING_ESCAPES: t.Set[str] = set()
+    _BYTE_STRING_ESCAPES: t.Set[str] = set()
     _KEYWORD_TRIE: t.Dict = {}
     _RS_TOKENIZER: t.Optional[t.Any] = None
+    _ESCAPE_FOLLOW_CHARS: t.Set[str] = set()
 
     KEYWORDS: t.Dict[str, TokenType] = {
         **{f"{{%{postfix}": TokenType.BLOCK_START for postfix in ("", "+", "-")},
@@ -704,8 +741,11 @@ class Tokenizer(metaclass=_Tokenizer):
         **{f"{{{{{postfix}": TokenType.BLOCK_START for postfix in ("+", "-")},
         **{f"{prefix}}}}}": TokenType.BLOCK_END for prefix in ("+", "-")},
         HINT_START: TokenType.HINT,
+        "&<": TokenType.AMP_LT,
+        "&>": TokenType.AMP_GT,
         "==": TokenType.EQ,
         "::": TokenType.DCOLON,
+        "?::": TokenType.QDCOLON,
         "||": TokenType.DPIPE,
         "|>": TokenType.PIPE_GT,
         ">=": TokenType.GTE,
@@ -726,6 +766,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "~~": TokenType.LIKE,
         "~~*": TokenType.ILIKE,
         "~*": TokenType.IRLIKE,
+        "-|-": TokenType.ADJACENT,
         "ALL": TokenType.ALL,
         "AND": TokenType.AND,
         "ANTI": TokenType.ANTI,
@@ -756,6 +797,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "CURRENT_TIME": TokenType.CURRENT_TIME,
         "CURRENT_TIMESTAMP": TokenType.CURRENT_TIMESTAMP,
         "CURRENT_USER": TokenType.CURRENT_USER,
+        "CURRENT_CATALOG": TokenType.CURRENT_CATALOG,
         "DATABASE": TokenType.DATABASE,
         "DEFAULT": TokenType.DEFAULT,
         "DELETE": TokenType.DELETE,
@@ -775,6 +817,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "FALSE": TokenType.FALSE,
         "FETCH": TokenType.FETCH,
         "FILTER": TokenType.FILTER,
+        "FILE": TokenType.FILE,
         "FIRST": TokenType.FIRST,
         "FULL": TokenType.FULL,
         "FUNCTION": TokenType.FUNCTION,
@@ -807,6 +850,8 @@ class Tokenizer(metaclass=_Tokenizer):
         "LIKE": TokenType.LIKE,
         "LIMIT": TokenType.LIMIT,
         "LOAD": TokenType.LOAD,
+        "LOCALTIME": TokenType.LOCALTIME,
+        "LOCALTIMESTAMP": TokenType.LOCALTIMESTAMP,
         "LOCK": TokenType.LOCK,
         "MERGE": TokenType.MERGE,
         "NAMESPACE": TokenType.NAMESPACE,
@@ -822,6 +867,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "XOR": TokenType.XOR,
         "ORDER BY": TokenType.ORDER_BY,
         "ORDINALITY": TokenType.ORDINALITY,
+        "OUT": TokenType.OUT,
         "OUTER": TokenType.OUTER,
         "OVER": TokenType.OVER,
         "OVERLAPS": TokenType.OVERLAPS,
@@ -835,6 +881,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "PRAGMA": TokenType.PRAGMA,
         "PRIMARY KEY": TokenType.PRIMARY_KEY,
         "PROCEDURE": TokenType.PROCEDURE,
+        "OPERATOR": TokenType.OPERATOR,
         "QUALIFY": TokenType.QUALIFY,
         "RANGE": TokenType.RANGE,
         "RECURSIVE": TokenType.RECURSIVE,
@@ -853,6 +900,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "SELECT": TokenType.SELECT,
         "SEMI": TokenType.SEMI,
         "SESSION": TokenType.SESSION,
+        "SESSION_USER": TokenType.SESSION_USER,
         "SET": TokenType.SET,
         "SETTINGS": TokenType.SETTINGS,
         "SHOW": TokenType.SHOW,
@@ -868,6 +916,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "THEN": TokenType.THEN,
         "TRUE": TokenType.TRUE,
         "TRUNCATE": TokenType.TRUNCATE,
+        "TRIGGER": TokenType.TRIGGER,
         "UNION": TokenType.UNION,
         "UNKNOWN": TokenType.UNKNOWN,
         "UNNEST": TokenType.UNNEST,
@@ -917,8 +966,10 @@ class Tokenizer(metaclass=_Tokenizer):
         "DECIMAL64": TokenType.DECIMAL64,
         "DECIMAL128": TokenType.DECIMAL128,
         "DECIMAL256": TokenType.DECIMAL256,
+        "DECFLOAT": TokenType.DECFLOAT,
         "BIGDECIMAL": TokenType.BIGDECIMAL,
         "BIGNUMERIC": TokenType.BIGDECIMAL,
+        "BIGNUM": TokenType.BIGNUM,
         "LIST": TokenType.LIST,
         "MAP": TokenType.MAP,
         "NULLABLE": TokenType.NULLABLE,
@@ -960,6 +1011,7 @@ class Tokenizer(metaclass=_Tokenizer):
         "VARBINARY": TokenType.VARBINARY,
         "TIME": TokenType.TIME,
         "TIMETZ": TokenType.TIMETZ,
+        "TIME_NS": TokenType.TIME_NS,
         "TIMESTAMP": TokenType.TIMESTAMP,
         "TIMESTAMPTZ": TokenType.TIMESTAMPTZ,
         "TIMESTAMPLTZ": TokenType.TIMESTAMPLTZ,
@@ -998,13 +1050,6 @@ class Tokenizer(metaclass=_Tokenizer):
         "USER-DEFINED": TokenType.USERDEFINED,
         "FOR VERSION": TokenType.VERSION_SNAPSHOT,
         "FOR TIMESTAMP": TokenType.TIMESTAMP_SNAPSHOT,
-    }
-
-    WHITE_SPACE: t.Dict[t.Optional[str], TokenType] = {
-        " ": TokenType.SPACE,
-        "\t": TokenType.SPACE,
-        "\n": TokenType.BREAK,
-        "\r": TokenType.BREAK,
     }
 
     COMMANDS = {
@@ -1101,7 +1146,7 @@ class Tokenizer(metaclass=_Tokenizer):
 
         return self.tokens
 
-    def _scan(self, until: t.Optional[t.Callable] = None) -> None:
+    def _scan(self, check_semicolon: bool = False) -> None:
         while self.size and not self._end:
             current = self._current
 
@@ -1128,7 +1173,7 @@ class Tokenizer(metaclass=_Tokenizer):
                 else:
                     self._scan_keywords()
 
-            if until and until():
+            if check_semicolon and self._peek == ";":
                 break
 
         if self.tokens and self._comments:
@@ -1144,10 +1189,10 @@ class Tokenizer(metaclass=_Tokenizer):
         return self.sql[start:end] if end <= self.size else ""
 
     def _advance(self, i: int = 1, alnum: bool = False) -> None:
-        if self.WHITE_SPACE.get(self._char) is TokenType.BREAK:
+        char = self._char
+        if char == "\n" or char == "\r":
             # Ensures we don't count an extra line if we get a \r\n line break sequence
-            # \r\n 改行シーケンスを取得した場合に余分な行をカウントしないようにします
-            if not (self._char == "\r" and self._peek == "\n"):
+            if not (char == "\r" and self._peek == "\n"):
                 self._col = i
                 self._line += 1
         else:
@@ -1161,6 +1206,8 @@ class Tokenizer(metaclass=_Tokenizer):
         if alnum and self._char.isalnum():
             # Here we use local variables instead of attributes for better performance
             # ここでは、パフォーマンス向上のため、属性の代わりにローカル変数を使用します。
+            sql = self.sql
+            size = self.size
             _col = self._col
             _current = self._current
             _end = self._end
@@ -1169,14 +1216,14 @@ class Tokenizer(metaclass=_Tokenizer):
             while _peek.isalnum():
                 _col += 1
                 _current += 1
-                _end = _current >= self.size
-                _peek = "" if _end else self.sql[_current]
+                _end = _current >= size
+                _peek = "" if _end else sql[_current]
 
             self._col = _col
             self._current = _current
             self._end = _end
             self._peek = _peek
-            self._char = self.sql[_current - 1]
+            self._char = sql[_current - 1]
 
     @property
     def _text(self) -> str:
@@ -1189,10 +1236,13 @@ class Tokenizer(metaclass=_Tokenizer):
             self.tokens[-1].comments.extend(self._comments)
             self._comments = []
 
+        if text is None:
+            text = self.sql[self._start : self._current]
+
         self.tokens.append(
             Token(
                 token_type,
-                text=self._text if text is None else text,
+                text=text,
                 line=self._line,
                 col=self._col,
                 start=self._start,
@@ -1213,21 +1263,24 @@ class Tokenizer(metaclass=_Tokenizer):
         ):
             start = self._current
             tokens = len(self.tokens)
-            self._scan(lambda: self._peek == ";")
+            self._scan(check_semicolon=True)
             self.tokens = self.tokens[:tokens]
             text = self.sql[start : self._current].strip()
             if text:
                 self._add(TokenType.STRING, text)
 
     def _scan_keywords(self) -> None:
+        sql = self.sql
+        sql_size = self.size
+        single_tokens = self.SINGLE_TOKENS
         size = 0
         word = None
-        chars = self._text
+        chars = self._char
         char = chars
         prev_space = False
         skip = False
         trie = self._KEYWORD_TRIE
-        single_token = char in self.SINGLE_TOKENS
+        single_token = char in single_tokens
 
         while chars:
             if skip:
@@ -1243,9 +1296,9 @@ class Tokenizer(metaclass=_Tokenizer):
             end = self._current + size
             size += 1
 
-            if end < self.size:
-                char = self.sql[end]
-                single_token = single_token or char in self.SINGLE_TOKENS
+            if end < sql_size:
+                char = sql[end]
+                single_token = single_token or char in single_tokens
                 is_space = char.isspace()
 
                 if not is_space or not prev_space:
@@ -1271,8 +1324,8 @@ class Tokenizer(metaclass=_Tokenizer):
                 self._add(self.KEYWORDS[word], text=word)
                 return
 
-        if self._char in self.SINGLE_TOKENS:
-            self._add(self.SINGLE_TOKENS[self._char], text=self._char)
+        if self._char in single_tokens:
+            self._add(single_tokens[self._char], text=self._char)
             return
 
         self._scan_var()
@@ -1314,8 +1367,10 @@ class Tokenizer(metaclass=_Tokenizer):
             self._comments.append(self._text[comment_start_size : -comment_end_size + 1])
             self._advance(comment_end_size - 1)
         else:
-            while not self._end and self.WHITE_SPACE.get(self._peek) is not TokenType.BREAK:
+            _peek = self._peek
+            while not self._end and _peek != "\n" and _peek != "\r":
                 self._advance(alnum=True)
+                _peek = self._peek
             self._comments.append(self._text[comment_start_size:])
 
         if (
@@ -1356,10 +1411,16 @@ class Tokenizer(metaclass=_Tokenizer):
                 decimal = True
                 self._advance()
             elif self._peek in ("-", "+") and scientific == 1:
-                scientific += 1
-                self._advance()
+                # Only consume +/- if followed by a digit
+                if self._current + 1 < self.size and self.sql[self._current + 1].isdigit():
+                    scientific += 1
+                    self._advance()
+                else:
+                    return self._add(TokenType.NUMBER)
             elif self._peek.upper() == "E" and not scientific:
                 scientific += 1
+                self._advance()
+            elif self._peek == "_" and self.dialect.NUMBERS_CAN_BE_UNDERSCORE_SEPARATED:
                 self._advance()
             elif self._peek.isidentifier():
                 number_text = self._text
@@ -1375,12 +1436,8 @@ class Tokenizer(metaclass=_Tokenizer):
                     self._add(TokenType.NUMBER, number_text)
                     self._add(TokenType.DCOLON, "::")
                     return self._add(token_type, literal)
-                else:
-                    replaced = literal.replace("_", "")
-                    if self.dialect.NUMBERS_CAN_BE_UNDERSCORE_SEPARATED and replaced.isdigit():
-                        return self._add(TokenType.NUMBER, number_text + replaced)
-                    if self.dialect.IDENTIFIERS_CAN_START_WITH_DIGIT:
-                        return self._add(TokenType.VAR)
+                elif self.dialect.IDENTIFIERS_CAN_START_WITH_DIGIT:
+                    return self._add(TokenType.VAR)
 
                 self._advance(-len(literal))
                 return self._add(TokenType.NUMBER, number_text)
@@ -1461,7 +1518,15 @@ class Tokenizer(metaclass=_Tokenizer):
             return False
 
         self._advance(len(start))
-        text = self._extract_string(end, raw_string=token_type == TokenType.RAW_STRING)
+        text = self._extract_string(
+            end,
+            escapes=(
+                self._BYTE_STRING_ESCAPES
+                if token_type == TokenType.BYTE_STRING
+                else self._STRING_ESCAPES
+            ),
+            raw_string=token_type == TokenType.RAW_STRING,
+        )
 
         if base and text:
             try:
@@ -1482,17 +1547,21 @@ class Tokenizer(metaclass=_Tokenizer):
         self._add(TokenType.IDENTIFIER, text)
 
     def _scan_var(self) -> None:
+        var_single_tokens = self.VAR_SINGLE_TOKENS
+        single_tokens = self.SINGLE_TOKENS
+
         while True:
-            char = self._peek.strip()
-            if char and (char in self.VAR_SINGLE_TOKENS or char not in self.SINGLE_TOKENS):
-                self._advance(alnum=True)
-            else:
+            peek = self._peek
+            if not peek or peek.isspace():
                 break
+            if peek not in var_single_tokens and peek in single_tokens:
+                break
+            self._advance(alnum=True)
 
         self._add(
             TokenType.VAR
             if self.tokens and self.tokens[-1].token_type == TokenType.PARAMETER
-            else self.KEYWORDS.get(self._text.upper(), TokenType.VAR)
+            else self.KEYWORDS.get(self.sql[self._start : self._current].upper(), TokenType.VAR)
         )
 
     def _extract_string(
@@ -1511,20 +1580,29 @@ class Tokenizer(metaclass=_Tokenizer):
                 not raw_string
                 and self.dialect.UNESCAPED_SEQUENCES
                 and self._peek
-                and self._char in self.STRING_ESCAPES
+                and self._char in escapes
             ):
                 unescaped_sequence = self.dialect.UNESCAPED_SEQUENCES.get(self._char + self._peek)
                 if unescaped_sequence:
                     self._advance(2)
                     text += unescaped_sequence
                     continue
+
+            is_valid_custom_escape = (
+                self.ESCAPE_FOLLOW_CHARS
+                and self._char == "\\"
+                and self._peek not in self.ESCAPE_FOLLOW_CHARS
+            )
+
             if (
                 (self.STRING_ESCAPES_ALLOWED_IN_RAW_STRINGS or not raw_string)
                 and self._char in escapes
-                and (self._peek == delimiter or self._peek in escapes)
+                and (self._peek == delimiter or self._peek in escapes or is_valid_custom_escape)
                 and (self._char not in self._QUOTES or self._char == self._peek)
             ):
                 if self._peek == delimiter:
+                    text += self._peek
+                elif is_valid_custom_escape and self._char != self._peek:
                     text += self._peek
                 else:
                     text += self._char + self._peek

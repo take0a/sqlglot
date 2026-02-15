@@ -31,6 +31,7 @@ from sqlglot.dialects.dialect import (
     sequence_sql,
     build_regexp_extract,
     explode_to_unnest_sql,
+    sha2_digest_sql,
 )
 from sqlglot.dialects.hive import Hive
 from sqlglot.dialects.mysql import MySQL
@@ -45,6 +46,12 @@ DATE_ADD_OR_SUB = t.Union[exp.DateAdd, exp.TimestampAdd, exp.DateSub]
 
 
 def _initcap_sql(self: Presto.Generator, expression: exp.Initcap) -> str:
+    delimiters = expression.expression
+    if delimiters and not (
+        delimiters.is_string and delimiters.this == self.dialect.INITCAP_DEFAULT_DELIMITER_CHARS
+    ):
+        self.unsupported("INITCAP does not support custom delimiters")
+
     regex = r"(\w)(\w*)"
     return f"REGEXP_REPLACE({self.sql(expression, 'this')}, '{regex}', x -> UPPER(x[1]) || LOWER(x[2]))"
 
@@ -270,6 +277,7 @@ class Presto(Dialect):
     TABLESAMPLE_SIZE_IS_PERCENT = True
     LOG_BASE_FIRST: t.Optional[bool] = None
     SUPPORTS_VALUES_DEFAULT = False
+    LEAST_GREATEST_IGNORES_NULLS = False
 
     TIME_MAPPING = MySQL.TIME_MAPPING
 
@@ -376,6 +384,7 @@ class Presto(Dialect):
             "MD5": exp.MD5Digest.from_arg_list,
             "SHA256": lambda args: exp.SHA2(this=seq_get(args, 0), length=exp.Literal.number(256)),
             "SHA512": lambda args: exp.SHA2(this=seq_get(args, 0), length=exp.Literal.number(512)),
+            "WEEK": exp.WeekOfYear.from_arg_list,
         }
 
         FUNCTION_PARSERS = parser.Parser.FUNCTION_PARSERS.copy()
@@ -546,10 +555,18 @@ class Presto(Dialect):
             exp.WithinGroup: transforms.preprocess(
                 [transforms.remove_within_group_for_percentiles]
             ),
+            # Note: Presto's TRUNCATE always returns DOUBLE, even with decimals=0, whereas
+            # most dialects return INT (SQLite also returns REAL, see sqlite.py). This creates
+            # a bidirectional transpilation gap: Presto→Other may change float division to int
+            # division, and vice versa. Modeling precisely would require exp.FloatTrunc or
+            # similar, deemed overengineering for this subtle semantic difference.
+            exp.Trunc: rename_func("TRUNCATE"),
             exp.Xor: bool_xor_sql,
             exp.MD5Digest: rename_func("MD5"),
             exp.SHA: rename_func("SHA1"),
+            exp.SHA1Digest: rename_func("SHA1"),
             exp.SHA2: sha256_sql,
+            exp.SHA2Digest: sha2_digest_sql,
         }
 
         RESERVED_KEYWORDS = {
@@ -612,6 +629,31 @@ class Presto(Dialect):
             "where",
             "with",
         }
+
+        def extract_sql(self, expression: exp.Extract) -> str:
+            date_part = expression.name
+
+            if not date_part.startswith("EPOCH"):
+                return super().extract_sql(expression)
+
+            if date_part == "EPOCH_MILLISECOND":
+                scale = 10**3
+            elif date_part == "EPOCH_MICROSECOND":
+                scale = 10**6
+            elif date_part == "EPOCH_NANOSECOND":
+                scale = 10**9
+            else:
+                scale = None
+
+            value = expression.expression
+
+            ts = exp.cast(value, to=exp.DataType.build("TIMESTAMP"))
+            to_unix: exp.Expression = exp.TimeToUnix(this=ts)
+
+            if scale:
+                to_unix = exp.Mul(this=to_unix, expression=exp.Literal.number(scale))
+
+            return self.sql(to_unix)
 
         def jsonformat_sql(self, expression: exp.JSONFormat) -> str:
             this = expression.this
@@ -687,9 +729,11 @@ class Presto(Dialect):
             return super().bracket_sql(expression)
 
         def struct_sql(self, expression: exp.Struct) -> str:
-            from sqlglot.optimizer.annotate_types import annotate_types
+            if not expression.type:
+                from sqlglot.optimizer.annotate_types import annotate_types
 
-            expression = annotate_types(expression, dialect=self.dialect)
+                annotate_types(expression, dialect=self.dialect)
+
             values: t.List[str] = []
             schema: t.List[str] = []
             unknown_type = False

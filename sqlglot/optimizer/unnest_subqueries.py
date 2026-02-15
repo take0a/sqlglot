@@ -47,6 +47,12 @@ def unnest(select, parent_select, next_alias_name):
     predicate = select.find_ancestor(exp.Condition)
     if (
         not predicate
+        # Do not unnest subqueries inside table-valued functions such as
+        # FROM GENERATE_SERIES(...), FROM UNNEST(...) etc in order to preserve join order
+        or (
+            isinstance(predicate, exp.Func)
+            and isinstance(predicate.parent, (exp.Table, exp.From, exp.Join))
+        )
         or parent_select is not predicate.parent_select
         or not parent_select.args.get("from_")
     ):

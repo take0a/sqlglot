@@ -477,6 +477,9 @@ class TestExpressions(unittest.TestCase):
         self.assertEqual(table.alias_column_names, ["a", "b"])
 
     def test_cast(self):
+        expression = parse_one("CAST(x AS DATE)")
+        self.assertIs(expression.type, expression.to)
+
         expression = parse_one("select cast(x as DATE)")
         casts = list(expression.find_all(exp.Cast))
         self.assertEqual(len(casts), 1)
@@ -740,10 +743,8 @@ class TestExpressions(unittest.TestCase):
         self.assertIsInstance(parse_one("TIME_TO_TIME_STR(a)"), exp.Cast)
         self.assertIsInstance(parse_one("TIME_TO_UNIX(a)"), exp.TimeToUnix)
         self.assertIsInstance(parse_one("TIME_STR_TO_DATE(a)"), exp.TimeStrToDate)
-        (self.assertIsInstance(parse_one("TIME_STR_TO_TIME(a)"), exp.TimeStrToTime),)
-        self.assertIsInstance(
-            parse_one("TIME_STR_TO_TIME(a, 'America/Los_Angeles')"), exp.TimeStrToTime
-        )
+        self.assertIsInstance(parse_one("TIME_STR_TO_TIME(a)"), exp.TimeStrToTime)
+        self.assertIsInstance(parse_one("TIME_STR_TO_TIME(a, 'some_zone')"), exp.TimeStrToTime)
         self.assertIsInstance(parse_one("TIME_STR_TO_UNIX(a)"), exp.TimeStrToUnix)
         self.assertIsInstance(parse_one("TRIM(LEADING 'b' FROM 'bla')"), exp.Trim)
         self.assertIsInstance(parse_one("TS_OR_DS_ADD(a, 1, 'day')"), exp.TsOrDsAdd)
@@ -766,6 +767,10 @@ class TestExpressions(unittest.TestCase):
         self.assertIsInstance(parse_one("TO_HEX(MD5(foo))", read="bigquery"), exp.MD5)
         self.assertIsInstance(parse_one("TRANSFORM(a, b)", read="spark"), exp.Transform)
         self.assertIsInstance(parse_one("ADD_MONTHS(a, b)"), exp.AddMonths)
+
+        ast = parse_one("GREATEST(a, b, c)")
+        self.assertIsInstance(ast.expressions, list)
+        self.assertEqual(len(ast.expressions), 2)
 
     def test_column(self):
         column = exp.column(exp.Star(), table="t")
@@ -1113,6 +1118,8 @@ FROM foo""",
         self.assertEqual(exp.DataType.build("varchar(100) collate 'en-ci'").sql(), "VARCHAR(100)")
         self.assertEqual(exp.DataType.build("int[3]").sql(dialect="duckdb"), "INT[3]")
         self.assertEqual(exp.DataType.build("int[3][3]").sql(dialect="duckdb"), "INT[3][3]")
+        self.assertEqual(exp.DataType.build("time_ns", "duckdb").sql(), "TIME_NS")
+        self.assertEqual(exp.DataType.build("bignum", "duckdb").sql(), "BIGNUM")
         self.assertEqual(
             exp.DataType.build("struct<x int>", dialect="spark").sql(), "STRUCT<x INT>"
         )
@@ -1277,3 +1284,47 @@ FROM foo""",
     def test_hash_large_ast(self):
         expr = parse_one("SELECT 1 UNION ALL " * 3000 + "SELECT 1")
         assert expr == expr
+
+    def test_literal_number(self):
+        for number in (
+            1,
+            -1.1,
+            1.1,
+            0,
+            "-1",
+            "1",
+            "1.1",
+            "-1.1",
+            "1e6",
+            "inf",
+            "binary_double_nan",
+        ):
+            with self.subTest(f"Test Literal number method for: {repr(number)}"):
+                literal = exp.Literal.number(number)
+
+                self.assertTrue(literal.is_number)
+
+                if isinstance(number, str):
+                    is_negative = number.startswith("-")
+                    expected_this = number.lstrip("-")
+                else:
+                    is_negative = number < 0
+                    expected_this = str(abs(number))
+
+                if is_negative:
+                    self.assertIsInstance(literal, exp.Neg)
+                    self.assertIsInstance(literal.this, exp.Literal)
+                    this = literal.this.this
+                else:
+                    self.assertIsInstance(literal, exp.Literal)
+                    this = literal.this
+
+                self.assertEqual(this, expected_this)
+
+    def test_update_positions_empty_meta(self):
+        expr1 = exp.Column(this="a")
+        expr2 = exp.Column(this="b")
+        expr2.meta.clear()
+
+        expr1.update_positions(expr2)
+        assert expr1.meta == {}

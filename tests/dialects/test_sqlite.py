@@ -1,5 +1,6 @@
 from tests.dialects.test_dialect import Validator
 
+from sqlglot import exp
 from sqlglot.helper import logger as helper_logger
 
 
@@ -71,7 +72,6 @@ class TestSQLite(Validator):
             "CURRENT_TIME",
             read={
                 "": "CURRENT_TIME",
-                "snowflake": "CURRENT_TIME()",
             },
         )
         self.validate_all(
@@ -160,6 +160,7 @@ class TestSQLite(Validator):
         self.validate_identity(
             "SELECT * FROM t WHERE NULL IS NOT y", "SELECT * FROM t WHERE NOT NULL IS y"
         )
+        self.validate_identity("SELECT SQLITE_VERSION()")
 
     def test_strftime(self):
         self.validate_identity("SELECT STRFTIME('%Y/%m/%d', 'now')")
@@ -230,6 +231,15 @@ class TestSQLite(Validator):
 
             self.assertIn("Named columns are not supported in table alias.", cm.output[0])
 
+    def test_trunc(self):
+        # SQLite TRUNC only accepts one argument
+        self.validate_identity("TRUNC(3.14)").assert_is(exp.Trunc)
+
+        # Decimals arg is dropped with warning (best-effort transpilation)
+        with self.assertLogs(helper_logger) as cm:
+            self.validate_identity("TRUNC(3.14, 2)", "TRUNC(3.14)").assert_is(exp.Trunc)
+            self.assertIn("'decimals' is not supported", cm.output[0])
+
     def test_ddl(self):
         for conflict_action in ("ABORT", "FAIL", "IGNORE", "REPLACE", "ROLLBACK"):
             with self.subTest(f"ON CONFLICT {conflict_action}"):
@@ -295,3 +305,20 @@ class TestSQLite(Validator):
     def test_analyze(self):
         self.validate_identity("ANALYZE tbl")
         self.validate_identity("ANALYZE schma.tbl")
+
+    def test_create_trigger(self):
+        """Test that SQLite CREATE TRIGGER statements fall back to Command parsing."""
+        self.validate_identity(
+            "CREATE TRIGGER log_insert AFTER INSERT ON users BEGIN INSERT INTO audit_log (user_id, action, created_at) VALUES (NEW.id, 'INSERT', datetime('now')) END",
+            check_command_warning=True,
+        )
+
+        self.validate_identity(
+            "CREATE TRIGGER check_balance BEFORE UPDATE OF balance ON accounts WHEN NEW.balance < 0 BEGIN UPDATE accounts SET balance = 0 WHERE id = NEW.id END",
+            check_command_warning=True,
+        )
+
+        self.validate_identity(
+            "CREATE TRIGGER view_insert INSTEAD OF INSERT ON employee_view BEGIN INSERT INTO employees (id, name, department) VALUES (NEW.id, NEW.name, NEW.department) END",
+            check_command_warning=True,
+        )

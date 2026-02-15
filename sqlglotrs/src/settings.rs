@@ -9,6 +9,7 @@ pub type TokenType = u16;
 #[cfg_attr(feature = "profiling", derive(serde::Serialize, serde::Deserialize))]
 pub struct TokenTypeSettings {
     pub bit_string: TokenType,
+    pub byte_string: TokenType,
     pub break_: TokenType,
     pub dcolon: TokenType,
     pub heredoc_string: TokenType,
@@ -29,6 +30,7 @@ impl TokenTypeSettings {
     #[new]
     pub fn new(
         bit_string: TokenType,
+        byte_string: TokenType,
         break_: TokenType,
         dcolon: TokenType,
         heredoc_string: TokenType,
@@ -45,6 +47,7 @@ impl TokenTypeSettings {
     ) -> Self {
         let token_type_settings = TokenTypeSettings {
             bit_string,
+            byte_string,
             break_,
             dcolon,
             heredoc_string,
@@ -84,13 +87,13 @@ impl TokenTypeSettings {
 #[pyclass]
 #[cfg_attr(feature = "profiling", derive(serde::Serialize, serde::Deserialize))]
 pub struct TokenizerSettings {
-    pub white_space: HashMap<char, TokenType>,
     pub single_tokens: HashMap<char, TokenType>,
     pub keywords: HashMap<String, TokenType>,
     pub numeric_literals: HashMap<String, String>,
     pub identifiers: HashMap<char, char>,
     pub identifier_escapes: HashSet<char>,
     pub string_escapes: HashSet<char>,
+    pub byte_string_escapes: HashSet<char>,
     pub quotes: HashMap<String, String>,
     pub format_strings: HashMap<String, (String, TokenType)>,
     pub has_bit_strings: bool,
@@ -104,19 +107,20 @@ pub struct TokenizerSettings {
     pub string_escapes_allowed_in_raw_strings: bool,
     pub nested_comments: bool,
     pub hint_start: String,
+    pub escape_follow_chars: HashSet<char>,
 }
 
 #[pymethods]
 impl TokenizerSettings {
     #[new]
     pub fn new(
-        white_space: HashMap<String, TokenType>,
         single_tokens: HashMap<String, TokenType>,
         keywords: HashMap<String, TokenType>,
         numeric_literals: HashMap<String, String>,
         identifiers: HashMap<String, String>,
         identifier_escapes: HashSet<String>,
         string_escapes: HashSet<String>,
+        byte_string_escapes: HashSet<String>,
         quotes: HashMap<String, String>,
         format_strings: HashMap<String, (String, TokenType)>,
         has_bit_strings: bool,
@@ -130,6 +134,7 @@ impl TokenizerSettings {
         string_escapes_allowed_in_raw_strings: bool,
         nested_comments: bool,
         hint_start: String,
+        escape_follow_chars: HashSet<String>,
     ) -> Self {
         let to_char = |v: &String| {
             if v.len() == 1 {
@@ -138,11 +143,6 @@ impl TokenizerSettings {
                 panic!("Invalid char: {}", v)
             }
         };
-
-        let white_space_native: HashMap<char, TokenType> = white_space
-            .into_iter()
-            .map(|(k, v)| (to_char(&k), v))
-            .collect();
 
         let single_tokens_native: HashMap<char, TokenType> = single_tokens
             .into_iter()
@@ -158,18 +158,20 @@ impl TokenizerSettings {
             identifier_escapes.iter().map(&to_char).collect();
 
         let string_escapes_native: HashSet<char> = string_escapes.iter().map(&to_char).collect();
+        let byte_string_escapes_native: HashSet<char> = byte_string_escapes.iter().map(&to_char).collect();
+        let escape_follow_chars_native: HashSet<char> = escape_follow_chars.iter().map(&to_char).collect();
 
         let var_single_tokens_native: HashSet<char> =
             var_single_tokens.iter().map(&to_char).collect();
 
         let tokenizer_settings = TokenizerSettings {
-            white_space: white_space_native,
             single_tokens: single_tokens_native,
             keywords,
             numeric_literals,
             identifiers: identifiers_native,
             identifier_escapes: identifier_escapes_native,
             string_escapes: string_escapes_native,
+            byte_string_escapes: byte_string_escapes_native,
             quotes,
             format_strings,
             has_bit_strings,
@@ -183,6 +185,7 @@ impl TokenizerSettings {
             string_escapes_allowed_in_raw_strings,
             nested_comments,
             hint_start,
+            escape_follow_chars: escape_follow_chars_native,
         };
 
         #[cfg(feature = "profiling")]

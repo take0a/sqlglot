@@ -22,9 +22,13 @@ class TestPostgres(Validator):
         expected_sql = "ARRAY[\n  x" + (",\n  x" * 27) + "\n]"
         self.validate_identity(sql, expected_sql, pretty=True)
 
+        self.validate_identity("SELECT GET_BIT(CAST(44 AS BIT(10)), 6)")
         self.validate_identity("SELECT * FROM t GROUP BY ROLLUP (a || '^' || b)")
         self.validate_identity("SELECT COSH(1.5)")
         self.validate_identity("SELECT EXP(1)")
+        self.validate_identity(
+            "SELECT MODE() WITHIN GROUP (ORDER BY status DESC) AS most_common FROM orders"
+        )
         self.validate_identity("SELECT ST_DISTANCE(gg1, gg2, FALSE) AS sphere_dist")
         self.validate_identity("SHA384(x)")
         self.validate_identity("1.x", "1. AS x")
@@ -69,6 +73,7 @@ class TestPostgres(Validator):
         self.validate_identity("SELECT TRIM(' X' FROM ' XXX ')")
         self.validate_identity("SELECT TRIM(LEADING 'bla' FROM ' XXX ' COLLATE utf8_bin)")
         self.validate_identity("""SELECT * FROM JSON_TO_RECORDSET(z) AS y("rank" INT)""")
+        self.validate_identity("SELECT ~x")
         self.validate_identity("x ~ 'y'")
         self.validate_identity("x ~* 'y'")
         self.validate_identity("SELECT * FROM r CROSS JOIN LATERAL UNNEST(ARRAY[1]) AS s(location)")
@@ -76,6 +81,8 @@ class TestPostgres(Validator):
         self.validate_identity("EXEC AS myfunc @id = 123", check_command_warning=True)
         self.validate_identity("SELECT CURRENT_SCHEMA")
         self.validate_identity("SELECT CURRENT_USER")
+        self.validate_identity("SELECT CURRENT_ROLE")
+        self.validate_identity("SELECT VERSION()")
         self.validate_identity("SELECT * FROM ONLY t1")
         self.validate_identity("SELECT INTERVAL '-1 MONTH'")
         self.validate_identity("SELECT INTERVAL '4.1 DAY'")
@@ -161,6 +168,16 @@ class TestPostgres(Validator):
             "ORDER BY 2, 3"
         )
         self.validate_identity(
+            "SELECT e'foo \\' bar'",
+            "SELECT e'foo '' bar'",
+        )
+        self.validate_identity("SELECT e'\\n'")
+        self.validate_identity("SELECT e'\\t'")
+        self.validate_identity(
+            "SELECT e'update table_name set a = \\'foo\\' where 1 = 0' AS x FROM tab",
+            "SELECT e'update table_name set a = ''foo'' where 1 = 0' AS x FROM tab",
+        )
+        self.validate_identity(
             "select count() OVER(partition by a order by a range offset preceding exclude current row)",
             "SELECT COUNT() OVER (PARTITION BY a ORDER BY a range BETWEEN offset preceding AND CURRENT ROW EXCLUDE CURRENT ROW)",
         )
@@ -219,7 +236,6 @@ class TestPostgres(Validator):
             "x !~* 'y'",
             "NOT x ~* 'y'",
         )
-
         self.validate_identity(
             "x ~~ 'y'",
             "x LIKE 'y'",
@@ -989,6 +1005,56 @@ FROM json_data, field_ids""",
             },
         )
 
+        self.validate_all(
+            "SELECT TO_CHAR(foo, bar)",
+            read={
+                "redshift": "SELECT TO_CHAR(foo, bar)",
+            },
+            write={
+                "postgres": "SELECT TO_CHAR(foo, bar)",
+                "redshift": "SELECT TO_CHAR(foo, bar)",
+            },
+        )
+        self.validate_all(
+            "CREATE TABLE table1 (a INT, b INT, PRIMARY KEY (a))",
+            read={
+                "sqlite": "CREATE TABLE table1 (a INT, b INT, PRIMARY KEY (a))",
+                "postgres": "CREATE TABLE table1 (a INT, b INT, PRIMARY KEY (a))",
+            },
+        )
+        self.validate_identity("SELECT NUMRANGE(1.1, 2.2) -|- NUMRANGE(2.2, 3.3)")
+        self.validate_identity(
+            "SELECT SLOPE(point '(4,4)', point '(0,0)')",
+            "SELECT SLOPE(CAST('(4,4)' AS POINT), CAST('(0,0)' AS POINT))",
+        )
+
+        width_bucket = self.validate_identity("WIDTH_BUCKET(10, ARRAY[5, 15])")
+        self.assertIsNotNone(width_bucket.args.get("threshold"))
+
+        width_bucket = self.validate_identity("WIDTH_BUCKET(10, 5, 15, 25)")
+        self.assertIsNone(width_bucket.args.get("threshold"))
+
+        self.validate_all(
+            "UPDATE foo SET a = bar.a, b = bar.b FROM bar WHERE foo.id = bar.id",
+            write={
+                "postgres": "UPDATE foo SET a = bar.a, b = bar.b FROM bar WHERE foo.id = bar.id",
+                "doris": "UPDATE foo SET a = bar.a, b = bar.b FROM bar WHERE foo.id = bar.id",
+                "starrocks": "UPDATE foo SET a = bar.a, b = bar.b FROM bar WHERE foo.id = bar.id",
+                "mysql": "UPDATE foo JOIN bar ON TRUE SET foo.a = bar.a, foo.b = bar.b WHERE foo.id = bar.id",
+                "singlestore": "UPDATE foo JOIN bar ON TRUE SET foo.a = bar.a, foo.b = bar.b WHERE foo.id = bar.id",
+            },
+        )
+
+        self.validate_identity("SELECT MLEAST(VARIADIC ARRAY[10, -1, 5, 4.4])")
+        self.validate_identity(
+            "SELECT MLEAST(VARIADIC ARRAY[]::numeric[])",
+            "SELECT MLEAST(VARIADIC CAST(ARRAY[] AS DECIMAL[]))",
+        )
+        self.validate_identity(
+            "SELECT * FROM schema_name.table_name st WHERE JSON_EXTRACT_PATH_TEXT((st.data)::json, variadic array['test'::text]) = 'test'::text",
+            "SELECT * FROM schema_name.table_name AS st WHERE JSON_EXTRACT_PATH_TEXT(CAST((st.data) AS JSON), VARIADIC ARRAY[CAST('test' AS TEXT)]) = CAST('test' AS TEXT)",
+        )
+
     def test_ddl(self):
         # Checks that user-defined types are parsed into DataType instead of Identifier
         self.parse_one("CREATE TABLE t (a udt)").this.expressions[0].args["kind"].assert_is(
@@ -1040,6 +1106,9 @@ FROM json_data, field_ids""",
         self.validate_identity("ALTER TABLE t1 SET ACCESS METHOD method")
         self.validate_identity("ALTER TABLE t1 SET TABLESPACE tablespace")
         self.validate_identity("ALTER TABLE t1 SET (fillfactor = 5, autovacuum_enabled = TRUE)")
+        self.validate_identity(
+            "INSERT INTO book (isbn, title) VALUES ($1, $2) ON CONFLICT(isbn) WHERE deleted_at IS NULL DO UPDATE SET title = EXCLUDED.title RETURNING id, isbn"
+        )
         self.validate_identity(
             "INSERT INTO newtable AS t(a, b, c) VALUES (1, 2, 3) ON CONFLICT(c) DO UPDATE SET a = t.a + 1 WHERE t.a < 1"
         )
@@ -1133,8 +1202,7 @@ FROM json_data, field_ids""",
             check_command_warning=True,
         )
         self.validate_identity(
-            "CREATE CONSTRAINT TRIGGER my_trigger AFTER INSERT OR DELETE OR UPDATE OF col_a, col_b ON public.my_table DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION do_sth()",
-            check_command_warning=True,
+            "CREATE CONSTRAINT TRIGGER my_trigger AFTER INSERT OR DELETE OR UPDATE OF col_a, col_b ON public.my_table DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION DO_STH()"
         )
         self.validate_identity(
             "CREATE UNLOGGED TABLE foo AS WITH t(c) AS (SELECT 1) SELECT * FROM (SELECT c AS c FROM t) AS temp"
@@ -1162,6 +1230,34 @@ FROM json_data, field_ids""",
             "CREATE OR REPLACE FUNCTION function_name (input_a character varying DEFAULT NULL::character varying)",
             "CREATE OR REPLACE FUNCTION function_name(input_a VARCHAR DEFAULT CAST(NULL AS VARCHAR))",
         )
+
+        # Function parameter modes
+        self.validate_identity("CREATE FUNCTION foo(a INT)")
+        self.validate_identity("CREATE FUNCTION foo(IN a INT)")
+        self.validate_identity("CREATE FUNCTION foo(OUT a INT)")
+        self.validate_identity("CREATE FUNCTION foo(INOUT a INT)")
+        self.validate_identity("CREATE FUNCTION foo(VARIADIC a INT[])")
+        self.validate_identity("CREATE FUNCTION foo(out INT)")  # "out" as identifier
+        self.validate_identity("CREATE FUNCTION foo(inout VARCHAR)")  # "inout" as identifier
+        self.validate_identity("CREATE FUNCTION foo(variadic INT[])")  # "variadic" as identifier
+        self.validate_identity(
+            "CREATE FUNCTION foo(a INT, OUT b INT, INOUT c VARCHAR, VARIADIC d INT[])"
+        )
+        self.validate_identity("CREATE OR REPLACE FUNCTION foo(INOUT id UUID)")
+        self.validate_identity(
+            "CREATE OR REPLACE FUNCTION foo(id UUID, OUT created_at TIMESTAMPTZ)"
+        )
+        self.validate_identity("CREATE FUNCTION foo(OUT x INT DEFAULT 5)")
+        self.validate_identity("CREATE FUNCTION foo(INOUT y VARCHAR DEFAULT 'test')")
+        self.validate_identity("CREATE FUNCTION foo(IN a INT DEFAULT 0, OUT b INT)")
+        self.validate_all(
+            "CREATE FUNCTION foo(VARIADIC args INT[] DEFAULT ARRAY[]::INT[])",
+            write={
+                "postgres": "CREATE FUNCTION foo(VARIADIC args INT[] DEFAULT CAST(ARRAY[] AS INT[]))",
+            },
+        )
+        self.validate_identity("CREATE FUNCTION foo(OUT result INT, IN input INT DEFAULT 10)")
+
         self.validate_identity(
             "CREATE TABLE products (product_no INT UNIQUE, name TEXT, price DECIMAL)",
             "CREATE TABLE products (product_no INT UNIQUE, name TEXT, price DECIMAL)",
@@ -1225,6 +1321,9 @@ FROM json_data, field_ids""",
         self.validate_identity("CREATE TABLE tbl (col UUID UNIQUE DEFAULT GEN_RANDOM_UUID())")
         self.validate_identity("CREATE TABLE tbl (col UUID, UNIQUE NULLS NOT DISTINCT (col))")
         self.validate_identity("CREATE TABLE tbl (col_a INT GENERATED ALWAYS AS (1 + 2) STORED)")
+        self.validate_identity(
+            "CREATE TABLE tbl (col_a INTERVAL GENERATED ALWAYS AS (a - b) STORED)"
+        )
 
         self.validate_identity("CREATE INDEX CONCURRENTLY ix_table_id ON tbl USING btree(id)")
         self.validate_identity(
@@ -1257,6 +1356,12 @@ FROM json_data, field_ids""",
         """,
             "CREATE TABLE IF NOT EXISTS public.rental (inventory_id INT NOT NULL, CONSTRAINT rental_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customer (customer_id) MATCH FULL ON UPDATE CASCADE ON DELETE RESTRICT, CONSTRAINT rental_inventory_id_fkey FOREIGN KEY (inventory_id) REFERENCES public.inventory (inventory_id) MATCH PARTIAL ON UPDATE CASCADE ON DELETE RESTRICT, CONSTRAINT rental_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.staff (staff_id) MATCH SIMPLE ON UPDATE CASCADE ON DELETE RESTRICT, INITIALLY IMMEDIATE)",
         )
+
+        for op in ("=", ">=", "<=", "<", ">", "&&", "||", "@>", "<@"):
+            with self.subTest(f"Testing EXCLUDE with operator {op}"):
+                self.validate_identity(
+                    f"CREATE TABLE circles (c circle, EXCLUDE USING gist(c WITH {op}))"
+                )
 
         with self.assertRaises(ParseError):
             transpile("CREATE TABLE products (price DECIMAL CHECK price > 0)", read="postgres")
@@ -1311,20 +1416,6 @@ FROM json_data, field_ids""",
                 ],
             )
 
-    def test_operator(self):
-        expr = self.parse_one("1 OPERATOR(+) 2 OPERATOR(*) 3")
-
-        expr.left.assert_is(exp.Operator)
-        expr.left.left.assert_is(exp.Literal)
-        expr.left.right.assert_is(exp.Literal)
-        expr.right.assert_is(exp.Literal)
-        self.assertEqual(expr.sql(dialect="postgres"), "1 OPERATOR(+) 2 OPERATOR(*) 3")
-
-        self.validate_identity("SELECT operator FROM t")
-        self.validate_identity("SELECT 1 OPERATOR(+) 2")
-        self.validate_identity("SELECT 1 OPERATOR(+) /* foo */ 2")
-        self.validate_identity("SELECT 1 OPERATOR(pg_catalog.+) 2")
-
     def test_bool_or(self):
         self.validate_identity(
             "SELECT a, LOGICAL_OR(b) FROM table GROUP BY a",
@@ -1376,6 +1467,36 @@ FROM json_data, field_ids""",
             },
             write={
                 "postgres": "VAR_POP(x)",
+            },
+        )
+
+    def test_corr(self):
+        self.validate_all(
+            "SELECT CORR(a, b)",
+            write={
+                "duckdb": "SELECT CORR(a, b)",
+                "postgres": "SELECT CORR(a, b)",
+            },
+        )
+        self.validate_all(
+            "SELECT CORR(a, b) OVER (PARTITION BY c)",
+            write={
+                "duckdb": "SELECT CORR(a, b) OVER (PARTITION BY c)",
+                "postgres": "SELECT CORR(a, b) OVER (PARTITION BY c)",
+            },
+        )
+        self.validate_all(
+            "SELECT CORR(a, b) FILTER(WHERE c > 0)",
+            write={
+                "duckdb": "SELECT CORR(a, b) FILTER(WHERE c > 0)",
+                "postgres": "SELECT CORR(a, b) FILTER(WHERE c > 0)",
+            },
+        )
+        self.validate_all(
+            "SELECT CORR(a, b) FILTER(WHERE c > 0) OVER (PARTITION BY d)",
+            write={
+                "duckdb": "SELECT CORR(a, b) FILTER(WHERE c > 0) OVER (PARTITION BY d)",
+                "postgres": "SELECT CORR(a, b) FILTER(WHERE c > 0) OVER (PARTITION BY d)",
             },
         )
 
@@ -1676,3 +1797,55 @@ CROSS JOIN JSON_ARRAY_ELEMENTS(CAST(JSON_EXTRACT_PATH(tbox, 'boxes') AS JSON)) A
             day_time_str = "a > INTERVAL '1 00:00' AND TRUE"
             self.validate_identity(day_time_str, "a > INTERVAL '1 00:00' AND TRUE")
             self.assertIsInstance(self.parse_one(day_time_str), exp.And)
+
+    def test_postgres_create_trigger(self):
+        basic_triggers = [
+            "CREATE TRIGGER check_update BEFORE UPDATE ON accounts FOR EACH ROW EXECUTE FUNCTION CHECK_ACCOUNT_UPDATE()",
+            "CREATE TRIGGER log_insert AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION LOG_CHANGES()",
+            "CREATE TRIGGER audit_changes AFTER INSERT OR UPDATE OR DELETE ON products FOR EACH ROW EXECUTE FUNCTION AUDIT_LOG()",
+            "CREATE TRIGGER check_balance BEFORE UPDATE OF balance, status ON accounts FOR EACH ROW EXECUTE FUNCTION VALIDATE_BALANCE()",
+            "CREATE TRIGGER conditional_trigger BEFORE UPDATE ON users FOR EACH ROW WHEN (OLD.id <> NEW.id) EXECUTE FUNCTION CHECK_ID_CHANGE()",
+            "CREATE TRIGGER statement_trigger AFTER INSERT ON orders FOR EACH STATEMENT EXECUTE FUNCTION UPDATE_SUMMARY()",
+            "CREATE TRIGGER instead_trigger INSTEAD OF INSERT ON user_view FOR EACH ROW EXECUTE FUNCTION HANDLE_INSERT()",
+            "CREATE OR REPLACE TRIGGER replace_trigger BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION LOG_INSERT()",
+            "CREATE TRIGGER param_trigger BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION LOG_WITH_PARAMS('insert', 'users')",
+            "CREATE TRIGGER my_trigger BEFORE INSERT ON myschema.users FOR EACH ROW EXECUTE FUNCTION LOG_CHANGES()",
+            "CREATE TRIGGER truncate_trigger BEFORE TRUNCATE ON users FOR EACH STATEMENT EXECUTE FUNCTION LOG_TRUNCATE()",
+            "CREATE TRIGGER complex_when BEFORE UPDATE ON accounts FOR EACH ROW WHEN (OLD.balance IS DISTINCT FROM NEW.balance AND NEW.balance > 0) EXECUTE FUNCTION CHECK_BALANCE()",
+            "CREATE TRIGGER emp_stamp BEFORE INSERT OR UPDATE ON emp FOR EACH ROW EXECUTE FUNCTION EMP_STAMP()",
+            "CREATE TRIGGER view_insert INSTEAD OF INSERT ON my_view FOR EACH ROW EXECUTE FUNCTION VIEW_INSERT_ROW()",
+            "CREATE TRIGGER check_update BEFORE UPDATE OF balance ON accounts FOR EACH ROW EXECUTE FUNCTION CHECK_ACCOUNT_UPDATE()",
+            "CREATE TRIGGER restock AFTER UPDATE ON products FOR EACH ROW WHEN (OLD.count <> NEW.count) EXECUTE FUNCTION RESTOCK_ITEM()",
+            "CREATE TRIGGER multi_col_update BEFORE UPDATE OF col1, col2, col3, col4 ON accounts FOR EACH ROW EXECUTE FUNCTION CHECK_COLUMNS()",
+            "CREATE TRIGGER all_events AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON audit_table FOR EACH STATEMENT EXECUTE FUNCTION LOG_ALL_CHANGES()",
+        ]
+
+        referencing_triggers = [
+            "CREATE TRIGGER track_new_rows AFTER INSERT ON users REFERENCING NEW TABLE AS new_data FOR EACH STATEMENT EXECUTE FUNCTION PROCESS_NEW_USERS()",
+            "CREATE TRIGGER track_changes AFTER UPDATE ON accounts REFERENCING OLD TABLE AS old_data NEW TABLE AS new_data FOR EACH STATEMENT EXECUTE FUNCTION COMPARE_CHANGES()",
+            "CREATE TRIGGER statistics_update AFTER UPDATE ON sales REFERENCING OLD TABLE AS old_sales NEW TABLE AS new_sales FOR EACH STATEMENT EXECUTE FUNCTION UPDATE_STATISTICS()",
+        ]
+
+        constraint_triggers = [
+            "CREATE CONSTRAINT TRIGGER check_integrity AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION VALIDATE_USER()",
+            "CREATE CONSTRAINT TRIGGER deferred_check AFTER INSERT ON orders DEFERRABLE FOR EACH ROW EXECUTE FUNCTION CHECK_ORDER()",
+            "CREATE CONSTRAINT TRIGGER deferred_check AFTER INSERT ON orders DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION CHECK_ORDER()",
+            "CREATE CONSTRAINT TRIGGER immediate_check AFTER INSERT ON orders NOT DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW EXECUTE FUNCTION CHECK_ORDER()",
+            "CREATE CONSTRAINT TRIGGER fk_check AFTER UPDATE ON orders FROM users FOR EACH ROW EXECUTE FUNCTION CHECK_FOREIGN_KEY()",
+            "CREATE CONSTRAINT TRIGGER fk_check AFTER UPDATE ON orders FROM public.users FOR EACH ROW EXECUTE FUNCTION CHECK_FOREIGN_KEY()",
+            "CREATE CONSTRAINT TRIGGER if_dist_exists AFTER INSERT OR UPDATE ON films DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION CHECK_FOREIGN_KEY('distributors', 'did')",
+            "CREATE CONSTRAINT TRIGGER check_fk AFTER INSERT ON orders FROM customers FOR EACH ROW EXECUTE FUNCTION CHECK_CUSTOMER_EXISTS()",
+            "CREATE CONSTRAINT TRIGGER complex_trigger AFTER UPDATE OF col1, col2 ON mytable FROM reftable DEFERRABLE INITIALLY DEFERRED REFERENCING OLD TABLE AS old_data NEW TABLE AS new_data FOR EACH STATEMENT WHEN (OLD.status <> NEW.status) EXECUTE FUNCTION COMPLEX_CHECK('param1', 'param2')",
+        ]
+
+        for sql in basic_triggers + referencing_triggers + constraint_triggers:
+            with self.subTest(sql):
+                self.validate_identity(sql)
+
+        self.validate_identity(
+            "CREATE TRIGGER proc_trigger BEFORE INSERT ON users FOR EACH ROW EXECUTE PROCEDURE LOG_CHANGES()",
+            "CREATE TRIGGER proc_trigger BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION LOG_CHANGES()",
+        )
+        self.validate_identity(
+            'CREATE TRIGGER "MyTrigger" BEFORE INSERT ON "MyTable" FOR EACH ROW EXECUTE FUNCTION MYFUNCTION()'
+        )

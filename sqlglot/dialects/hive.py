@@ -30,6 +30,7 @@ from sqlglot.dialects.dialect import (
     struct_extract_sql,
     time_format,
     timestrtotime_sql,
+    trim_sql,
     unit_to_str,
     var_map_sql,
     sequence_sql,
@@ -47,6 +48,10 @@ from sqlglot.tokens import TokenType
 from sqlglot.generator import unsupported_args
 from sqlglot.optimizer.annotate_types import TypeAnnotator
 from sqlglot.typing.hive import EXPRESSION_METADATA
+
+if t.TYPE_CHECKING:
+    from sqlglot._typing import F
+
 
 # (FuncType, Multiplier)
 DATE_DELTA_INTERVAL = {
@@ -224,6 +229,10 @@ class Hive(Dialect):
 
     EXPRESSION_METADATA = EXPRESSION_METADATA.copy()
 
+    # https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=27362046#LanguageManualUDF-StringFunctions
+    # https://github.com/apache/hive/blob/master/ql/src/java/org/apache/hadoop/hive/ql/exec/Utilities.java#L266-L269
+    INITCAP_DEFAULT_DELIMITER_CHARS = " \t\n\r\f\u000b\u001c\u001d\u001e\u001f"
+
     # Support only the non-ANSI mode (default for Hive, Spark2, Spark)
     # 非 ANSI モードのみをサポートします (Hive、Spark2、Spark のデフォルト)
     COERCES_TO = defaultdict(set, deepcopy(TypeAnnotator.COERCES_TO))
@@ -318,6 +327,12 @@ class Hive(Dialect):
         # Whether the dialect supports using ALTER COLUMN syntax with CHANGE COLUMN.
         # 方言が CHANGE COLUMN を使用した ALTER COLUMN 構文の使用をサポートしているかどうか。
 
+        FUNCTION_PARSERS = {
+            **parser.Parser.FUNCTION_PARSERS,
+            "PERCENTILE": lambda self: self._parse_quantile_function(exp.Quantile),
+            "PERCENTILE_APPROX": lambda self: self._parse_quantile_function(exp.ApproxQuantile),
+        }
+
         FUNCTIONS = {
             **parser.Parser.FUNCTIONS,
             "BASE64": exp.ToBase64.from_arg_list,
@@ -348,8 +363,6 @@ class Hive(Dialect):
             "LAST_VALUE": _build_with_ignore_nulls(exp.LastValue),
             "MAP": parser.build_var_map,
             "MONTH": lambda args: exp.Month(this=exp.TsOrDsToDate.from_arg_list(args)),
-            "PERCENTILE": exp.Quantile.from_arg_list,
-            "PERCENTILE_APPROX": exp.ApproxQuantile.from_arg_list,
             "REGEXP_EXTRACT": build_regexp_extract(exp.RegexpExtract),
             "REGEXP_EXTRACT_ALL": build_regexp_extract(exp.RegexpExtractAll),
             "SEQUENCE": exp.GenerateSeries.from_arg_list,
@@ -425,6 +438,21 @@ class Hive(Dialect):
                 row_format_after=row_format_after,
                 record_reader=record_reader,
             )
+
+        def _parse_quantile_function(self, func: t.Type[F]) -> F:
+            if self._match(TokenType.DISTINCT):
+                first_arg: t.Optional[exp.Expression] = self.expression(
+                    exp.Distinct, expressions=[self._parse_lambda()]
+                )
+            else:
+                self._match(TokenType.ALL)
+                first_arg = self._parse_lambda()
+
+            args = [first_arg]
+            if self._match(TokenType.COMMA):
+                args.extend(self._parse_function_args())
+
+            return func.from_arg_list(args)
 
         def _parse_types(
             self, check_func: bool = False, schema: bool = False, allow_identifiers: bool = True
@@ -667,6 +695,7 @@ class Hive(Dialect):
             exp.TsOrDsDiff: _date_diff_sql,
             exp.TsOrDsToDate: _to_date_sql,
             exp.TryCast: no_trycast_sql,
+            exp.Trim: trim_sql,
             exp.Unicode: rename_func("ASCII"),
             exp.UnixToStr: lambda self, e: self.func(
                 "FROM_UNIXTIME", e.this, time_format("hive")(self, e)
@@ -757,6 +786,13 @@ class Hive(Dialect):
                 "COLLECT_LIST",
                 expression.this.this if isinstance(expression.this, exp.Order) else expression.this,
             )
+
+        # Hive/Spark lack native numeric TRUNC. CAST to BIGINT truncates toward zero (not rounds).
+        # Potential enhancement: a TRUNC_TEMPLATE using FLOOR/CEIL with scale (Spark 3.3+)
+        # could preserve decimals: CASE WHEN x >= 0 THEN FLOOR(x, d) ELSE CEIL(x, d) END
+        @unsupported_args("decimals")
+        def trunc_sql(self, expression: exp.Trunc) -> str:
+            return self.sql(exp.cast(expression.this, exp.DataType.Type.BIGINT))
 
         def datatype_sql(self, expression: exp.DataType) -> str:
             if expression.this in self.PARAMETERIZABLE_TEXT_TYPES and (

@@ -15,9 +15,6 @@ classifiers = [
     "Programming Language :: SQL",
     "Programming Language :: Python :: 3 :: Only",
 ]
-dependencies = [
-    "pdoc>=15.0.4",
-]
 
 [project.urls]
 Homepage = "https://sqlglot.com/"

@@ -7,6 +7,9 @@ class TestRedshift(Validator):
 
     def test_redshift(self):
         self.validate_identity("SELECT COSH(1.5)")
+        self.validate_identity(
+            "ROUND(CAST(a AS DOUBLE PRECISION) / CAST(b AS DOUBLE PRECISION), 2)"
+        )
         self.validate_all(
             "SELECT SPLIT_TO_ARRAY('12,345,6789')",
             write={
@@ -326,7 +329,10 @@ class TestRedshift(Validator):
             },
         )
 
+        self.validate_identity("SELECT VERSION()")
+
     def test_identity(self):
+        self.validate_identity("SELECT GETBIT(FROM_HEX('4d'), 2)")
         self.validate_identity("SELECT EXP(1)")
         self.validate_identity("ALTER TABLE table_name ALTER COLUMN bla TYPE VARCHAR")
         self.validate_identity("SELECT CAST(value AS FLOAT(8))")
@@ -344,6 +350,12 @@ class TestRedshift(Validator):
         self.validate_identity("CREATE TABLE datetable (start_date DATE, end_date DATE)")
         self.validate_identity("SELECT APPROXIMATE AS y")
         self.validate_identity("CREATE TABLE t (c BIGINT IDENTITY(0, 1))")
+        self.validate_identity(
+            "COPY test_staging_tbl FROM 's3://your/bucket/prefix/here' IAM_ROLE default FORMAT AS AVRO 'auto'"
+        )
+        self.validate_identity(
+            "COPY test_staging_tbl FROM 's3://your/bucket/prefix/here' IAM_ROLE default FORMAT AS JSON 's3://jsonpaths_file'"
+        )
         self.validate_identity(
             "SELECT * FROM venue WHERE (venuecity, venuestate) IN (('Miami', 'FL'), ('Tampa', 'FL')) ORDER BY venueid"
         )
@@ -457,6 +469,39 @@ ORDER BY
             """SELECT CONVERT_TIMEZONE('America/New_York', '2024-08-06 09:10:00.000')""",
             """SELECT CONVERT_TIMEZONE('UTC', 'America/New_York', '2024-08-06 09:10:00.000')""",
         )
+
+        self.validate_all(
+            "SELECT *, 4 AS col4 EXCLUDE (col2, col3) FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3)",
+            write={
+                "redshift": "SELECT *, 4 AS col4 EXCLUDE (col2, col3) FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3)",
+                "duckdb": "SELECT * EXCLUDE (col2, col3) FROM (SELECT *, 4 AS col4 FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3))",
+                "snowflake": "SELECT * EXCLUDE (col2, col3) FROM (SELECT *, 4 AS col4 FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3))",
+            },
+        )
+
+        self.validate_all(
+            "SELECT *, 4 AS col4 EXCLUDE col2, col3 FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3)",
+            write={
+                "redshift": "SELECT *, 4 AS col4 EXCLUDE (col2, col3) FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3)",
+                "duckdb": "SELECT * EXCLUDE (col2, col3) FROM (SELECT *, 4 AS col4 FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3))",
+                "snowflake": "SELECT * EXCLUDE (col2, col3) FROM (SELECT *, 4 AS col4 FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3))",
+            },
+        )
+
+        self.validate_all(
+            "SELECT col1, *, col2 EXCLUDE(col3) FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3)",
+            write={
+                "redshift": "SELECT col1, *, col2 EXCLUDE (col3) FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3)",
+                "duckdb": "SELECT * EXCLUDE (col3) FROM (SELECT col1, *, col2 FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3))",
+                "snowflake": "SELECT * EXCLUDE (col3) FROM (SELECT col1, *, col2 FROM (SELECT 1 AS col1, 2 AS col2, 3 AS col3))",
+            },
+        )
+
+        self.validate_identity("SELECT 1 EXCLUDE", "SELECT 1 AS EXCLUDE")
+        self.validate_identity("SELECT 1 EXCLUDE FROM t", "SELECT 1 AS EXCLUDE FROM t")
+        self.validate_identity("SELECT 1 AS EXCLUDE")
+        self.validate_identity("SELECT * FROM (SELECT 1 AS EXCLUDE) AS t")
+        self.validate_identity("SELECT 1 AS EXCLUDE, 2 AS foo")
 
     def test_values(self):
         # Test crazy-sized VALUES clause to UNION ALL conversion to ensure we don't get RecursionError
@@ -713,5 +758,14 @@ FROM (
             write={
                 "redshift": "SELECT * FROM t LIMIT 1",
                 "postgres": "SELECT * FROM t FETCH FIRST 1 ROWS ONLY",
+            },
+        )
+
+    def test_regexp_extract(self):
+        self.validate_all(
+            "SELECT REGEXP_SUBSTR(abc, 'pattern(group)', 2) FROM table",
+            write={
+                "redshift": '''SELECT REGEXP_SUBSTR(abc, 'pattern(group)', 2) FROM "table"''',
+                "duckdb": '''SELECT REGEXP_EXTRACT(SUBSTRING(abc, 2), 'pattern(group)') FROM "table"''',
             },
         )

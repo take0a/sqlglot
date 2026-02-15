@@ -1,5 +1,4 @@
 from tests.dialects.test_dialect import Validator
-
 from sqlglot import exp
 
 
@@ -289,11 +288,22 @@ class TestHive(Validator):
             },
         )
         self.validate_all(
-            "SELECT a FROM x LATERAL VIEW POSEXPLODE(y) t AS a",
+            "SELECT a FROM x LATERAL VIEW POSEXPLODE(y) t AS pos, col",
             write={
-                "presto": "SELECT a FROM x CROSS JOIN UNNEST(y) WITH ORDINALITY AS t(a)",
-                "hive": "SELECT a FROM x LATERAL VIEW POSEXPLODE(y) t AS a",
-                "spark": "SELECT a FROM x LATERAL VIEW POSEXPLODE(y) t AS a",
+                "presto": "SELECT a FROM x CROSS JOIN LATERAL (SELECT pos - 1 AS pos, col FROM UNNEST(y) WITH ORDINALITY AS t(col, pos))",
+                "trino": "SELECT a FROM x CROSS JOIN LATERAL (SELECT pos - 1 AS pos, col FROM UNNEST(y) WITH ORDINALITY AS t(col, pos))",
+                "duckdb": "SELECT a FROM x CROSS JOIN LATERAL (SELECT pos - 1 AS pos, col FROM UNNEST(y) WITH ORDINALITY AS t(col, pos))",
+                "hive": "SELECT a FROM x LATERAL VIEW POSEXPLODE(y) t AS pos, col",
+                "spark": "SELECT a FROM x LATERAL VIEW POSEXPLODE(y) t AS pos, col",
+            },
+        )
+        self.validate_all(
+            "SELECT * FROM x LATERAL VIEW POSEXPLODE(MAP(col, 'val')) t AS pos, key, value",
+            write={
+                "presto": "SELECT * FROM x CROSS JOIN LATERAL (SELECT pos - 1 AS pos, key, value FROM UNNEST(MAP(ARRAY[col], ARRAY['val'])) WITH ORDINALITY AS t(key, value, pos))",
+                "trino": "SELECT * FROM x CROSS JOIN LATERAL (SELECT pos - 1 AS pos, key, value FROM UNNEST(MAP(ARRAY[col], ARRAY['val'])) WITH ORDINALITY AS t(key, value, pos))",
+                "hive": "SELECT * FROM x LATERAL VIEW POSEXPLODE(MAP(col, 'val')) t AS pos, key, value",
+                "spark": "SELECT * FROM x LATERAL VIEW POSEXPLODE(MAP(col, 'val')) t AS pos, key, value",
             },
         )
         self.validate_all(
@@ -418,7 +428,7 @@ class TestHive(Validator):
         self.validate_all(
             "DATE_FORMAT('2020-01-01', 'yyyy-MM-dd HH:mm:ss')",
             write={
-                "bigquery": "FORMAT_DATE('%Y-%m-%d %H:%M:%S', CAST('2020-01-01' AS DATETIME))",
+                "bigquery": "FORMAT_DATE('%F %T', CAST('2020-01-01' AS DATETIME))",
                 "duckdb": "STRFTIME(CAST('2020-01-01' AS TIMESTAMP), '%Y-%m-%d %H:%M:%S')",
                 "presto": "DATE_FORMAT(CAST('2020-01-01' AS TIMESTAMP), '%Y-%m-%d %T')",
                 "hive": "DATE_FORMAT('2020-01-01', 'yyyy-MM-dd HH:mm:ss')",
@@ -461,11 +471,11 @@ class TestHive(Validator):
         self.validate_all(
             "DATEDIFF(TO_DATE(y), x)",
             write={
-                "duckdb": "DATE_DIFF('DAY', CAST(x AS DATE), CAST(y AS DATE))",
+                "duckdb": "DATE_DIFF('DAY', CAST(x AS DATE), TRY_CAST(y AS DATE))",
                 "presto": "DATE_DIFF('DAY', CAST(CAST(x AS TIMESTAMP) AS DATE), CAST(CAST(CAST(CAST(y AS TIMESTAMP) AS DATE) AS TIMESTAMP) AS DATE))",
                 "hive": "DATEDIFF(TO_DATE(y), x)",
                 "spark": "DATEDIFF(TO_DATE(y), x)",
-                "": "DATEDIFF(CAST(y AS DATE), CAST(x AS DATE))",
+                "": "DATEDIFF(TRY_CAST(y AS DATE), CAST(x AS DATE))",
             },
         )
         self.validate_all(
@@ -610,15 +620,6 @@ class TestHive(Validator):
             },
         )
         self.validate_all(
-            "PERCENTILE(x, 0.5)",
-            write={
-                "duckdb": "QUANTILE(x, 0.5)",
-                "presto": "APPROX_PERCENTILE(x, 0.5)",
-                "hive": "PERCENTILE(x, 0.5)",
-                "spark": "PERCENTILE(x, 0.5)",
-            },
-        )
-        self.validate_all(
             "PERCENTILE_APPROX(x, 0.5)",
             read={
                 "hive": "PERCENTILE_APPROX(x, 0.5)",
@@ -631,6 +632,24 @@ class TestHive(Validator):
                 "presto": "APPROX_PERCENTILE(x, 0.5)",
                 "duckdb": "APPROX_QUANTILE(x, 0.5)",
                 "spark": "PERCENTILE_APPROX(x, 0.5)",
+            },
+        )
+        self.validate_all(
+            "PERCENTILE_APPROX(x, 0.5)",
+            read={
+                "hive": "PERCENTILE_APPROX(ALL x, 0.5)",
+                "spark2": "PERCENTILE_APPROX(ALL x, 0.5)",
+                "spark": "PERCENTILE_APPROX(ALL x, 0.5)",
+                "databricks": "PERCENTILE_APPROX(ALL x, 0.5)",
+            },
+        )
+        self.validate_all(
+            "PERCENTILE_APPROX(x, 0.5, 200)",
+            read={
+                "hive": "PERCENTILE_APPROX(ALL x, 0.5, 200)",
+                "spark2": "PERCENTILE_APPROX(ALL x, 0.5, 200)",
+                "spark": "PERCENTILE_APPROX(ALL x, 0.5, 200)",
+                "databricks": "PERCENTILE_APPROX(ALL x, 0.5, 200)",
             },
         )
         self.validate_all(
@@ -685,14 +704,19 @@ class TestHive(Validator):
                 "spark": "LOCATE('a', x, 3)",
             },
         )
+
         self.validate_all(
             "INITCAP('new york')",
             write={
-                "duckdb": "INITCAP('new york')",
-                "presto": r"REGEXP_REPLACE('new york', '(\w)(\w*)', x -> UPPER(x[1]) || LOWER(x[2]))",
                 "hive": "INITCAP('new york')",
                 "spark": "INITCAP('new york')",
             },
+        )
+        expression = self.parse_one("INITCAP('new york')")
+        self.assert_duckdb_sql(
+            expression,
+            includes=("REGEXP_MATCHES(", "ARRAY_TO_STRING("),
+            chr_chars=("\u000b", "\u001c", "\u001d", "\u001e", "\u001f"),
         )
         self.validate_all(
             "SELECT * FROM x.z TABLESAMPLE(10 PERCENT) y",
@@ -861,6 +885,16 @@ class TestHive(Validator):
                 "presto": "SELECT DATE_TRUNC('MONTH', TRY_CAST(ds AS TIMESTAMP))",
             },
         )
+
+        # Hive TRUNC is date-only, should parse to TimestampTrunc (not numeric Trunc)
+        self.validate_identity("TRUNC(date_col, 'MM')").assert_is(exp.TimestampTrunc)
+
+        # Numeric TRUNC from other dialects - Hive has no native support, uses CAST to BIGINT
+        self.validate_all(
+            "CAST(3.14159 AS BIGINT)",
+            read={"postgres": "TRUNC(3.14159, 2)"},
+        )
+
         self.validate_all(
             "REGEXP_EXTRACT('abc', '(a)(b)(c)')",
             read={
@@ -929,6 +963,7 @@ class TestHive(Validator):
         self.validate_identity(
             "DATE_SUB(CURRENT_DATE, 1 + 1)", "DATE_ADD(CURRENT_DATE, (1 + 1) * -1)"
         )
+        self.validate_identity("SELECT ELT(2, 'foo', 'bar', 'baz') AS Result")
 
     def test_escapes(self) -> None:
         self.validate_identity("'\n'", "'\\n'")
@@ -968,3 +1003,49 @@ class TestHive(Validator):
                         "duckdb": f"SELECT * FROM t1 {join} JOIN t2 ON TRUE",
                     },
                 )
+
+    def test_percentile(self):
+        self.validate_all(
+            "PERCENTILE(x, 0.5)",
+            write={
+                "duckdb": "QUANTILE(x, 0.5)",
+                "presto": "APPROX_PERCENTILE(x, 0.5)",
+                "hive": "PERCENTILE(x, 0.5)",
+                "spark2": "PERCENTILE(x, 0.5)",
+                "spark": "PERCENTILE(x, 0.5)",
+                "databricks": "PERCENTILE(x, 0.5)",
+            },
+        )
+
+        self.validate_all(
+            "PERCENTILE(DISTINCT x, 0.5)",
+            read={
+                "hive": "PERCENTILE(DISTINCT x, 0.5)",
+                "spark": "PERCENTILE(DISTINCT x, 0.5)",
+                "databricks": "PERCENTILE(DISTINCT x, 0.5)",
+            },
+            write={
+                "spark": "PERCENTILE(DISTINCT x, 0.5)",
+                "databricks": "PERCENTILE(DISTINCT x, 0.5)",
+            },
+        )
+
+        self.validate_all(
+            "PERCENTILE(x, 0.5)",
+            read={
+                "hive": "PERCENTILE(ALL x, 0.5)",
+                "spark2": "PERCENTILE(ALL x, 0.5)",
+                "spark": "PERCENTILE(ALL x, 0.5)",
+                "databricks": "PERCENTILE(ALL x, 0.5)",
+            },
+        )
+
+        quantile_expr = self.validate_identity("PERCENTILE(DISTINCT x, 0.5)")
+        quantile_expr.assert_is(exp.Quantile)
+        quantile_expr.this.assert_is(exp.Distinct)
+        quantile_expr.args.get("quantile").assert_is(exp.Literal)
+
+        quantile_expr = self.validate_identity("PERCENTILE(ALL x, 0.5)", "PERCENTILE(x, 0.5)")
+        quantile_expr.assert_is(exp.Quantile)
+        quantile_expr.this.assert_is(exp.Column)
+        quantile_expr.args.get("quantile").assert_is(exp.Literal)

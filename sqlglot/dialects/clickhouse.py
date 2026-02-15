@@ -11,6 +11,7 @@ from sqlglot.dialects.dialect import (
     build_formatted_time,
     build_like,
     inline_array_sql,
+    jarowinkler_similarity,
     json_extract_segments,
     json_path_key_only_name,
     length_or_char_length_sql,
@@ -24,11 +25,13 @@ from sqlglot.dialects.dialect import (
     timestamptrunc_sql,
     unit_to_var,
     trim_sql,
+    sha2_digest_sql,
 )
 from sqlglot.generator import Generator
 from sqlglot.helper import is_int, seq_get
 from sqlglot.tokens import Token, TokenType
 from sqlglot.generator import unsupported_args
+from sqlglot.typing.clickhouse import EXPRESSION_METADATA
 
 DATEΤΙΜΕ_DELTA = t.Union[exp.DateAdd, exp.DateDiff, exp.DateSub, exp.TimestampSub, exp.TimestampAdd]
 
@@ -256,6 +259,8 @@ class ClickHouse(Dialect):
     # https://github.com/ClickHouse/ClickHouse/issues/33935#issue-1112165779
     NORMALIZATION_STRATEGY = NormalizationStrategy.CASE_SENSITIVE
 
+    EXPRESSION_METADATA = EXPRESSION_METADATA.copy()
+
     UNESCAPED_SEQUENCES = {
         "\\0": "\0",
     }
@@ -373,8 +378,11 @@ class ClickHouse(Dialect):
             "ARRAYSUM": exp.ArraySum.from_arg_list,
             "ARRAYREVERSE": exp.ArrayReverse.from_arg_list,
             "ARRAYSLICE": exp.ArraySlice.from_arg_list,
+            "CURRENTDATABASE": exp.CurrentDatabase.from_arg_list,
+            "CURRENTSCHEMAS": exp.CurrentSchemas.from_arg_list,
             "COUNTIF": _build_count_if,
             "COSINEDISTANCE": exp.CosineDistance.from_arg_list,
+            "VERSION": exp.CurrentVersion.from_arg_list,
             "DATE_ADD": build_date_delta(exp.DateAdd, default_unit=None),
             "DATEADD": build_date_delta(exp.DateAdd, default_unit=None),
             "DATE_DIFF": build_date_delta(exp.DateDiff, default_unit=None, supports_timezone=True),
@@ -413,6 +421,7 @@ class ClickHouse(Dialect):
             "SUBSTRINGINDEX": exp.SubstringIndex.from_arg_list,
             "TOTYPENAME": exp.Typeof.from_arg_list,
             "EDITDISTANCE": exp.Levenshtein.from_arg_list,
+            "JAROWINKLERSIMILARITY": exp.JarowinklerSimilarity.from_arg_list,
             "LEVENSHTEINDISTANCE": exp.Levenshtein.from_arg_list,
         }
         FUNCTIONS.pop("TRANSFORM")
@@ -487,6 +496,7 @@ class ClickHouse(Dialect):
             "quantiles",
             "quantileExact",
             "quantilesExact",
+            "quantilesExactExclusive",
             "quantileExactLow",
             "quantilesExactLow",
             "quantileExactHigh",
@@ -580,6 +590,8 @@ class ClickHouse(Dialect):
             "MEDIAN": lambda self: self._parse_quantile(),
             "COLUMNS": lambda self: self._parse_columns(),
             "TUPLE": lambda self: exp.Struct.from_arg_list(self._parse_function_args(alias=True)),
+            "AND": lambda self: exp.and_(*self._parse_function_args(alias=False)),
+            "OR": lambda self: exp.or_(*self._parse_function_args(alias=False)),
         }
 
         FUNCTION_PARSERS.pop("MATCH")
@@ -942,10 +954,15 @@ class ClickHouse(Dialect):
             return super()._parse_wrapped_id_vars(optional=True)
 
         def _parse_primary_key(
-            self, wrapped_optional: bool = False, in_props: bool = False
+            self,
+            wrapped_optional: bool = False,
+            in_props: bool = False,
+            named_primary_key: bool = False,
         ) -> exp.PrimaryKeyColumnConstraint | exp.PrimaryKey:
             return super()._parse_primary_key(
-                wrapped_optional=wrapped_optional or in_props, in_props=in_props
+                wrapped_optional=wrapped_optional or in_props,
+                in_props=in_props,
+                named_primary_key=named_primary_key,
             )
 
         def _parse_on_property(self) -> t.Optional[exp.Expression]:
@@ -1189,6 +1206,8 @@ class ClickHouse(Dialect):
             exp.ArgMin: arg_max_or_min_no_count("argMin"),
             exp.Array: inline_array_sql,
             exp.CastToStrType: rename_func("CAST"),
+            exp.CurrentDatabase: rename_func("CURRENT_DATABASE"),
+            exp.CurrentSchemas: rename_func("CURRENT_SCHEMAS"),
             exp.CountIf: rename_func("countIf"),
             exp.CosineDistance: rename_func("cosineDistance"),
             exp.CompressColumnConstraint: lambda self,
@@ -1196,6 +1215,7 @@ class ClickHouse(Dialect):
             exp.ComputedColumnConstraint: lambda self,
             e: f"{'MATERIALIZED' if e.args.get('persisted') else 'ALIAS'} {self.sql(e, 'this')}",
             exp.CurrentDate: lambda self, e: self.func("CURRENT_DATE"),
+            exp.CurrentVersion: rename_func("VERSION"),
             exp.DateAdd: _datetime_delta_sql("DATE_ADD"),
             exp.DateDiff: _datetime_delta_sql("DATE_DIFF"),
             exp.DateStrToDate: rename_func("toDate"),
@@ -1204,6 +1224,7 @@ class ClickHouse(Dialect):
             exp.FarmFingerprint: rename_func("farmFingerprint64"),
             exp.Final: lambda self, e: f"{self.sql(e, 'this')} FINAL",
             exp.IsNan: rename_func("isNaN"),
+            exp.JarowinklerSimilarity: jarowinkler_similarity("jaroWinklerSimilarity"),
             exp.JSONCast: lambda self, e: f"{self.sql(e, 'this')}.:{self.sql(e, 'to')}",
             exp.JSONExtract: json_extract_segments("JSONExtractString", quoted_index=False),
             exp.JSONExtractScalar: json_extract_segments("JSONExtractString", quoted_index=False),
@@ -1220,6 +1241,7 @@ class ClickHouse(Dialect):
             exp.Rand: rename_func("randCanonical"),
             exp.StartsWith: rename_func("startsWith"),
             exp.Struct: rename_func("tuple"),
+            exp.Trunc: rename_func("trunc"),
             exp.EndsWith: rename_func("endsWith"),
             exp.EuclideanDistance: rename_func("L2Distance"),
             exp.StrPosition: lambda self, e: strposition_sql(
@@ -1241,7 +1263,9 @@ class ClickHouse(Dialect):
             exp.MD5Digest: rename_func("MD5"),
             exp.MD5: lambda self, e: self.func("LOWER", self.func("HEX", self.func("MD5", e.this))),
             exp.SHA: rename_func("SHA1"),
+            exp.SHA1Digest: rename_func("SHA1"),
             exp.SHA2: sha256_sql,
+            exp.SHA2Digest: sha2_digest_sql,
             exp.Split: lambda self, e: self.func(
                 "splitByString", e.args.get("expression"), e.this, e.args.get("limit")
             ),

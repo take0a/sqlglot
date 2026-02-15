@@ -46,6 +46,7 @@ def optimize(
     catalog: t.Optional[str | exp.Identifier] = None,
     dialect: DialectType = None,
     rules: t.Sequence[t.Callable] = RULES,
+    sql: t.Optional[str] = None,
     **kwargs,
 ) -> exp.Expression:
     """
@@ -87,6 +88,7 @@ def optimize(
         "catalog": catalog,
         "schema": schema,
         "dialect": dialect,
+        "sql": sql,
         "isolate_tables": True,  # needed for other optimizations to perform well
         "quote_identifiers": False,
         **kwargs,

@@ -19,12 +19,7 @@ def _annotate_by_similar_args(
     Infers the type of the expression according to the following rules:
     - If all args are of the same type OR any arg is of target_type, the expr is inferred as such
     - If any arg is of UNKNOWN type and none of target_type, the expr is inferred as UNKNOWN
-    以下の規則に従って式の型を推論します。
-    - すべての引数が同じ型であるか、いずれかの引数がtarget_typeである場合、式はその型として推論されます。
-    - いずれかの引数がUNKNOWN型であり、かついずれの引数もtarget_typeでない場合、式はUNKNOWN型として推論されます。
     """
-    self._annotate_args(expression)
-
     expressions: t.List[exp.Expression] = []
     for arg in args:
         arg_expr = expression.args.get(arg)
@@ -49,12 +44,35 @@ def _annotate_by_similar_args(
 
 EXPRESSION_METADATA: ExpressionMetadataType = {
     **HIVE_EXPRESSION_METADATA,
-    exp.Substring: {"annotator": lambda self, e: self._annotate_by_args(e, "this")},
+    **{
+        expr_type: {"returns": exp.DataType.Type.DOUBLE}
+        for expr_type in {
+            exp.Atan2,
+            exp.Randn,
+        }
+    },
+    **{
+        exp_type: {"returns": exp.DataType.Type.VARCHAR}
+        for exp_type in {
+            exp.Format,
+            exp.Right,
+        }
+    },
+    **{
+        expr_type: {"annotator": lambda self, e: self._annotate_by_args(e, "this")}
+        for expr_type in {
+            exp.ArrayFilter,
+            exp.Substring,
+        }
+    },
+    exp.AtTimeZone: {"returns": exp.DataType.Type.TIMESTAMP},
+    exp.AddMonths: {"returns": exp.DataType.Type.DATE},
     exp.Concat: {
         "annotator": lambda self, e: _annotate_by_similar_args(
             self, e, "expressions", target_type=exp.DataType.Type.TEXT
         )
     },
+    exp.NextDay: {"returns": exp.DataType.Type.DATE},
     exp.Pad: {
         "annotator": lambda self, e: _annotate_by_similar_args(
             self, e, "this", "fill_pattern", target_type=exp.DataType.Type.TEXT

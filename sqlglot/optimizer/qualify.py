@@ -30,14 +30,14 @@ def qualify(
     validate_qualify_columns: bool = True,
     quote_identifiers: bool = True,
     identify: bool = True,
+    canonicalize_table_aliases: bool = False,
     on_qualify: t.Optional[t.Callable[[exp.Expression], None]] = None,
+    sql: t.Optional[str] = None,
 ) -> exp.Expression:
     """
     Rewrite sqlglot AST to have normalized and qualified tables and columns.
-    sqlglot AST を書き換えて、正規化および修飾されたテーブルと列を作成します。
 
     This step is necessary for all further SQLGlot optimizations.
-    この手順は、SQLGlot の今後の最適化に必要です。
 
     Example:
         >>> import sqlglot
@@ -102,6 +102,7 @@ def qualify(
         catalog=catalog,
         dialect=dialect,
         on_qualify=on_qualify,
+        canonicalize_table_aliases=canonicalize_table_aliases,
     )
 
     if isolate_tables:
@@ -121,6 +122,6 @@ def qualify(
         expression = quote_identifiers_func(expression, dialect=dialect, identify=identify)
 
     if validate_qualify_columns:
-        validate_qualify_columns_func(expression)
+        validate_qualify_columns_func(expression, sql=sql)
 
     return expression

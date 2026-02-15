@@ -112,10 +112,12 @@ class Scope:
         self._selected_sources = None
         self._columns = None
         self._external_columns = None
+        self._local_columns = None
         self._join_hints = None
         self._pivots = None
         self._references = None
         self._semi_anti_join_tables = None
+        self._column_index = None
 
     def branch(
         self, expression, scope_type, sources=None, cte_sources=None, lateral_sources=None, **kwargs
@@ -145,35 +147,41 @@ class Scope:
         self._stars = []
         self._join_hints = []
         self._semi_anti_join_tables = set()
+        self._column_index = set()
 
         for node in self.walk(bfs=False):
             if node is self.expression:
                 continue
 
-            if isinstance(node, exp.Dot) and node.is_star:
+            node_type = type(node)
+            parent_type = type(node.parent)
+
+            if node_type is exp.Dot and node.is_star:
                 self._stars.append(node)
-            elif isinstance(node, exp.Column) and not isinstance(node, exp.Pseudocolumn):
-                if isinstance(node.this, exp.Star):
+            elif node_type is exp.Column:
+                self._column_index.add(id(node))
+
+                if type(node.this) is exp.Star:
                     self._stars.append(node)
                 else:
                     self._raw_columns.append(node)
-            elif isinstance(node, exp.Table) and not isinstance(node.parent, exp.JoinHint):
+            elif node_type is exp.Table and parent_type is not exp.JoinHint:
                 parent = node.parent
-                if isinstance(parent, exp.Join) and parent.is_semi_or_anti_join:
+                if parent_type is exp.Join and parent.is_semi_or_anti_join:
                     self._semi_anti_join_tables.add(node.alias_or_name)
 
                 self._tables.append(node)
-            elif isinstance(node, exp.JoinHint):
+            elif node_type is exp.JoinHint:
                 self._join_hints.append(node)
             elif isinstance(node, exp.UDTF):
                 self._udtfs.append(node)
-            elif isinstance(node, exp.CTE):
+            elif node_type is exp.CTE:
                 self._ctes.append(node)
             elif _is_derived_table(node) and _is_from_or_join(node):
                 self._derived_tables.append(node)
-            elif isinstance(node, exp.UNWRAPPED_QUERIES):
+            elif isinstance(node, exp.UNWRAPPED_QUERIES) and not _is_from_or_join(node):
                 self._subqueries.append(node)
-            elif isinstance(node, exp.TableColumn):
+            elif node_type is exp.TableColumn:
                 self._table_columns.append(node)
 
         self._collected = True
@@ -282,10 +290,17 @@ class Scope:
         return self._stars
 
     @property
+    def column_index(self) -> t.Set[int]:
+        """
+        Set of column object IDs that belong to this scope's expression.
+        """
+        self._ensure_collected()
+        return self._column_index
+
+    @property
     def columns(self):
         """
         List of columns in this scope.
-        このスコープ内の列のリスト。
 
         Returns:
             list[exp.Column]: Column instances in this scope, plus any
@@ -399,12 +414,9 @@ class Scope:
     def external_columns(self):
         """
         Columns that appear to reference sources in outer scopes.
-        外部スコープ内のソースを参照するように見える列。
 
         Returns:
-            list[exp.Column]: Column instances that don't reference
-                sources in the current scope.
-                現在のスコープ内のソースを参照しない列インスタンス。
+            list[exp.Column]: Column instances that don't reference sources in the current scope.
         """
         if self._external_columns is None:
             if isinstance(self.expression, exp.SetOperation):
@@ -414,17 +426,29 @@ class Scope:
                 self._external_columns = [
                     c
                     for c in self.columns
-                    if c.table not in self.selected_sources
-                    and c.table not in self.semi_or_anti_join_tables
+                    if c.table not in self.sources and c.table not in self.semi_or_anti_join_tables
                 ]
 
         return self._external_columns
 
     @property
+    def local_columns(self):
+        """
+        Columns in this scope that are not external.
+
+        Returns:
+            list[exp.Column]: Column instances that reference sources in the current scope.
+        """
+        if self._local_columns is None:
+            external_columns = set(self.external_columns)
+            self._local_columns = [c for c in self.columns if c not in external_columns]
+
+        return self._local_columns
+
+    @property
     def unqualified_columns(self):
         """
         Unqualified columns in the current scope.
-        現在のスコープ内の修飾されていない列。
 
         Returns:
              list[exp.Column]: Unqualified columns
@@ -509,19 +533,17 @@ class Scope:
 
     @property
     def is_correlated_subquery(self):
-        """Determine if this scope is a correlated subquery
-        このスコープが相関サブクエリであるかどうかを判断します"""
+        """Determine if this scope is a correlated subquery"""
         return bool(self.can_be_correlated and self.external_columns)
 
     def rename_source(self, old_name, new_name):
-        """Rename a source in this scope
-        このスコープ内のソースの名前を変更する"""
-        columns = self.sources.pop(old_name or "", [])
-        self.sources[new_name] = columns
+        """Rename a source in this scope"""
+        old_name = old_name or ""
+        if old_name in self.sources:
+            self.sources[new_name] = self.sources.pop(old_name)
 
     def add_source(self, name, source):
-        """Add a source to this scope
-        このスコープにソースを追加する"""
+        """Add a source to this scope"""
         self.sources[name] = source
         self.clear_cache()
 
@@ -760,11 +782,8 @@ def _is_derived_table(expression: exp.Subquery) -> bool:
     We represent (tbl1 JOIN tbl2) as a Subquery, but it's not really a "derived table",
     as it doesn't introduce a new scope. If an alias is present, it shadows all names
     under the Subquery, so that's one exception to this rule.
-    (tbl1 JOIN tbl2) はサブクエリとして表現されていますが、新しいスコープを導入しないため、
-    実際には「派生テーブル」ではありません。エイリアスが存在する場合、サブクエリの下位にある
-    すべての名前がエイリアスによって隠蔽されるため、これはこのルールの例外となります。
     """
-    return isinstance(expression, exp.Subquery) and bool(
+    return type(expression) is exp.Subquery and bool(
         expression.alias or isinstance(expression.this, exp.UNWRAPPED_QUERIES)
     )
 
@@ -777,11 +796,10 @@ def _is_from_or_join(expression: exp.Expression) -> bool:
     parent = expression.parent
 
     # Subqueries can be arbitrarily nested
-    # サブクエリは任意にネストできる
-    while isinstance(parent, exp.Subquery):
+    while type(parent) is exp.Subquery:
         parent = parent.parent
 
-    return isinstance(parent, (exp.From, exp.Join))
+    return type(parent) in (exp.From, exp.Join)
 
 
 def _traverse_tables(scope):
@@ -900,7 +918,7 @@ def _traverse_udtfs(scope):
 
     sources = {}
     for expression in expressions:
-        if _is_derived_table(expression):
+        if isinstance(expression, exp.Subquery):
             top = None
             for child_scope in _traverse_scope(
                 scope.branch(
@@ -956,20 +974,18 @@ def walk_in_scope(expression, bfs=True, prune=None):
         if node is expression:
             continue
 
+        node_type = type(node)
+        parent_type = type(node.parent)
         if (
-            isinstance(node, exp.CTE)
-            or (
-                isinstance(node.parent, (exp.From, exp.Join, exp.Subquery))
-                and _is_derived_table(node)
-            )
+            node_type is exp.CTE
+            or (parent_type in (exp.From, exp.Join) and _is_derived_table(node))
             or (isinstance(node.parent, exp.UDTF) and isinstance(node, exp.Query))
             or isinstance(node, exp.UNWRAPPED_QUERIES)
         ):
             crossed_scope_boundary = True
 
-            if isinstance(node, (exp.Subquery, exp.UDTF)):
+            if node_type is exp.Subquery or isinstance(node, exp.UDTF):
                 # The following args are not actually in the inner scope, so we should visit them
-                # 次の引数は実際には内部スコープにないので、それらを参照する必要があります。
                 for key in ("joins", "laterals", "pivots"):
                     for arg in node.args.get(key) or []:
                         yield from walk_in_scope(arg, bfs=bfs)

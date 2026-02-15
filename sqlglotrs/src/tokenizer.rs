@@ -2,6 +2,7 @@ use crate::settings::TokenType;
 use crate::trie::{Trie, TrieResult};
 use crate::{Token, TokenTypeSettings, TokenizerDialectSettings, TokenizerSettings};
 use pyo3::prelude::*;
+use rustc_hash::FxHashSet as HashSet;
 use std::cmp::{max, min};
 
 #[derive(Debug)]
@@ -174,9 +175,10 @@ impl<'a> TokenizerState<'a> {
     }
 
     fn advance(&mut self, i: isize) -> Result<(), TokenizerError> {
-        if Some(&self.token_types.break_) == self.settings.white_space.get(&self.current_char) {
+        let current_char = self.current_char;
+        if current_char == '\n' || current_char == '\r' {
             // Ensures we don't count an extra line if we get a \r\n line break sequence.
-            if !(self.current_char == '\r' && self.peek_char == '\n') {
+            if !(current_char == '\r' && self.peek_char == '\n') {
                 self.column = i as usize;
                 self.line += 1;
             }
@@ -268,17 +270,15 @@ impl<'a> TokenizerState<'a> {
     }
 
     fn scan_keyword(&mut self) -> Result<(), TokenizerError> {
+        let single_tokens = &self.settings.single_tokens;
+
         let mut size: usize = 0;
         let mut word: Option<String> = None;
-        let mut chars = self.text();
+        let mut chars = self.current_char.to_string();
         let mut current_char = '\0';
         let mut prev_space = false;
         let mut skip;
-        let mut is_single_token = chars.len() == 1
-            && self
-                .settings
-                .single_tokens
-                .contains_key(&chars.chars().next().unwrap());
+        let mut is_single_token = single_tokens.contains_key(&self.current_char);
 
         let (mut trie_result, mut trie_node) =
             self.keyword_trie.root.contains(&chars.to_uppercase());
@@ -296,7 +296,7 @@ impl<'a> TokenizerState<'a> {
             if end < self.size {
                 current_char = self.char_at(end)?;
                 is_single_token =
-                    is_single_token || self.settings.single_tokens.contains_key(&current_char);
+                    is_single_token || single_tokens.contains_key(&current_char);
                 let is_space = current_char.is_whitespace();
 
                 if !is_space || !prev_space {
@@ -391,10 +391,10 @@ impl<'a> TokenizerState<'a> {
                 .push(text[comment_start_size..text.len() - comment_end_size + 1].to_string());
             self.advance((comment_end_size - 1) as isize)?;
         } else {
-            while !self.is_end
-                && self.settings.white_space.get(&self.peek_char) != Some(&self.token_types.break_)
-            {
+            let mut peek_char = self.peek_char;
+            while !self.is_end && peek_char != '\n' && peek_char != '\r' {
                 self.advance(1)?;
+                peek_char = self.peek_char;
             }
             self.comments
                 .push(self.text()[comment_start_size..].to_string());
@@ -439,7 +439,7 @@ impl<'a> TokenizerState<'a> {
                 let tag = if self.current_char.to_string() == *end {
                     String::new()
                 } else {
-                    self.extract_string(end, false, true, !self.settings.heredoc_tag_is_identifier)?
+                    self.extract_string(end, false, None, true, !self.settings.heredoc_tag_is_identifier)?
                 };
 
                 if !tag.is_empty()
@@ -464,8 +464,13 @@ impl<'a> TokenizerState<'a> {
         };
 
         self.advance(start.len() as isize)?;
+        let string_escapes = if token_type == self.token_types.byte_string {
+            Some(&self.settings.byte_string_escapes)
+        } else {
+            None
+        };
         let text =
-            self.extract_string(&end, false, token_type == self.token_types.raw_string, true)?;
+            self.extract_string(&end, false, string_escapes, token_type == self.token_types.raw_string, true)?;
 
         if let Some(b) = base {
             if !text.is_empty() && u128::from_str_radix(&text, b).is_err() {
@@ -513,10 +518,17 @@ impl<'a> TokenizerState<'a> {
                 decimal = true;
                 self.advance(1)?;
             } else if (self.peek_char == '-' || self.peek_char == '+') && scientific == 1 {
-                scientific += 1;
-                self.advance(1)?;
+                // Only consume +/- if followed by a digit
+                if self.current + 1 < self.size && self.sql[self.current + 1].is_ascii_digit() {
+                    scientific += 1;
+                    self.advance(1)?;
+                } else {
+                    return self.add(self.token_types.number, None);
+                }
             } else if self.peek_char.to_ascii_uppercase() == 'E' && scientific == 0 {
                 scientific += 1;
+                self.advance(1)?;
+            } else if self.peek_char == '_' && self.dialect_settings.numbers_can_be_underscore_separated {
                 self.advance(1)?;
             } else if self.is_alphabetic_or_underscore(self.peek_char) {
                 let number_text = self.text();
@@ -541,16 +553,10 @@ impl<'a> TokenizerState<'a> {
                     )
                     .copied();
 
-                let replaced = literal.replace("_", "");
-
                 if let Some(unwrapped_token_type) = token_type {
                     self.add(self.token_types.number, Some(number_text))?;
                     self.add(self.token_types.dcolon, Some("::".to_string()))?;
                     self.add(unwrapped_token_type, Some(literal))?;
-                } else if self.dialect_settings.numbers_can_be_underscore_separated
-                    && self.is_numeric(&replaced)
-                {
-                    self.add(self.token_types.number, Some(number_text + &replaced))?;
                 } else if self.dialect_settings.identifiers_can_start_with_digit {
                     self.add(self.token_types.var, None)?;
                 } else {
@@ -589,20 +595,18 @@ impl<'a> TokenizerState<'a> {
     }
 
     fn scan_var(&mut self) -> Result<(), TokenizerError> {
+        let var_single_tokens = &self.settings.var_single_tokens;
+        let single_tokens = &self.settings.single_tokens;
+
         loop {
-            let peek_char = if !self.peek_char.is_whitespace() {
-                self.peek_char
-            } else {
-                '\0'
-            };
-            if peek_char != '\0'
-                && (self.settings.var_single_tokens.contains(&peek_char)
-                    || !self.settings.single_tokens.contains_key(&peek_char))
-            {
-                self.advance(1)?;
-            } else {
+            let peek_char = self.peek_char;
+            if peek_char == '\0' || peek_char.is_whitespace() {
                 break;
             }
+            if !var_single_tokens.contains(&peek_char) && single_tokens.contains_key(&peek_char) {
+                break;
+            }
+            self.advance(1)?;
         }
 
         let token_type =
@@ -620,7 +624,7 @@ impl<'a> TokenizerState<'a> {
 
     fn scan_identifier(&mut self, identifier_end: &str) -> Result<(), TokenizerError> {
         self.advance(1)?;
-        let text = self.extract_string(identifier_end, true, false, true)?;
+        let text = self.extract_string(identifier_end, true, None, false, true)?;
         self.add(self.token_types.identifier, Some(text))
     }
 
@@ -628,6 +632,7 @@ impl<'a> TokenizerState<'a> {
         &mut self,
         delimiter: &str,
         use_identifier_escapes: bool,
+        string_escapes: Option<&HashSet<char>>,
         raw_string: bool,
         raise_unmatched: bool,
     ) -> Result<String, TokenizerError> {
@@ -638,16 +643,17 @@ impl<'a> TokenizerState<'a> {
             tmp.extend(delimiter.chars());
             combined_identifier_escapes = Some(tmp);
         }
+        let default_escapes = string_escapes.unwrap_or(&self.settings.string_escapes);
         let escapes = match combined_identifier_escapes {
             Some(ref v) => v,
-            None => &self.settings.string_escapes,
+            None => default_escapes,
         };
 
         loop {
             if !raw_string
                 && !self.dialect_settings.unescaped_sequences.is_empty()
                 && !self.peek_char.is_whitespace()
-                && self.settings.string_escapes.contains(&self.current_char)
+                && escapes.contains(&self.current_char)
             {
                 let sequence_key = format!("{}{}", self.current_char, self.peek_char);
                 if let Some(unescaped_sequence) =
@@ -669,8 +675,20 @@ impl<'a> TokenizerState<'a> {
             {
                 let peek_char_str = self.peek_char.to_string();
                 let equal_delimiter = delimiter == peek_char_str;
-                if equal_delimiter || escapes.contains(&self.peek_char) {
+                let is_valid_custom_escape =
+                    self.current_char == '\\'
+                        && !self.settings.escape_follow_chars.is_empty()
+                        && !self.settings.escape_follow_chars.contains(&self.peek_char);
+
+                if equal_delimiter 
+                    || escapes.contains(&self.peek_char) 
+                    || is_valid_custom_escape
+                {
                     if equal_delimiter {
+                        text.push(self.peek_char);
+                    } else if is_valid_custom_escape
+                        && self.current_char != self.peek_char 
+                    {
                         text.push(self.peek_char);
                     } else {
                         text.push(self.current_char);
@@ -719,10 +737,6 @@ impl<'a> TokenizerState<'a> {
 
     fn is_alphabetic_or_underscore(&self, name: char) -> bool {
         name.is_alphabetic() || name == '_'
-    }
-
-    fn is_numeric(&self, s: &str) -> bool {
-        s.chars().all(|c| c.is_ascii_digit())
     }
 
     fn extract_value(&mut self) -> Result<String, TokenizerError> {
